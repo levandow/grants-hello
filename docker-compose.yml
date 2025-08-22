@@ -16,21 +16,12 @@ services:
       timeout: 5s
       retries: 10
 
-  ingest:
-    build: .
-    env_file: [".env"]
-    depends_on:
-      api:
-        condition: service_started
-    volumes:
-      - ./scripts:/app/scripts
-      - ./app:/app/app
-      - ./packages:/app/packages
-    command: python scripts/ingest_any.py
-
   api:
     build: .
     env_file: [".env"]
+    environment:
+      - PYTHONPATH=/app
+    working_dir: /app
     ports:
       - "${API_PORT}:8080"
     depends_on:
@@ -41,6 +32,24 @@ services:
     volumes:
       - ./app:/app/app
       - ./requirements.txt:/app/requirements.txt
+
+# docker-compose.yml
+  ingest:
+    build: .
+    env_file: [".env"]
+    environment:
+      - PYTHONPATH=/app
+      - API_URL=http://api:8080    # <— point to the API service, not localhost
+    depends_on:
+      api:
+        condition: service_started
+    working_dir: /app
+    volumes:
+      - ./scripts:/app/scripts
+      - ./app:/app/app
+      - ./packages:/app/packages
+    command: python scripts/ingest_any.py
+
 
 volumes:
   pgdata:
