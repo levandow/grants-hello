@@ -1,0 +1,28 @@
+[
+  {
+    "id": "dummy-1",
+    "source": "dummy",
+    "source_uid": "dummy-1",
+    "title": {"en": "Dummy grant for testing", "sv": "Testbidrag"},
+    "summary": {"en": "This is a dummy opportunity", "sv": "Detta är en testutlysning"},
+    "programme": "Demo Programme",
+    "sponsor": "Demo Sponsor",
+    "tags": ["testing", "dummy"],
+    "deadlines": [{"type": "single", "date": "2025-12-01"}],
+    "status": "open",
+    "links": {"landing": "https://example.org/dummy"}
+  },
+  {
+    "id": "dummy-2",
+    "source": "dummy",
+    "source_uid": "dummy-2",
+    "title": {"en": "Another test call", "sv": "Ytterligare en testutlysning"},
+    "summary": {"en": "Second dummy opportunity", "sv": "Andra testutlysningen"},
+    "programme": "Demo Programme 2",
+    "sponsor": "Demo Sponsor 2",
+    "tags": ["demo", "aviation"],
+    "deadlines": [{"type": "single", "date": "2026-01-15"}],
+    "status": "open",
+    "links": {"landing": "https://example.org/dummy2"}
+  }
+]

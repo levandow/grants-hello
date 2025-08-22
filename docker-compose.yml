@@ -16,6 +16,18 @@ services:
       timeout: 5s
       retries: 10
 
+  ingest:
+    build: .
+    env_file: [".env"]
+    depends_on:
+      api:
+        condition: service_started
+    volumes:
+      - ./scripts:/app/scripts
+      - ./app:/app/app
+      - ./packages:/app/packages
+    command: python scripts/ingest_any.py
+
   api:
     build: .
     env_file: [".env"]
@@ -32,3 +44,5 @@ services:
 
 volumes:
   pgdata:
+
+
