@@ -1,3 +1,4 @@
+import os
 from fastapi import FastAPI, Depends
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -7,10 +8,14 @@ from .schemas import OpportunityIn, OpportunityOut
 
 app = FastAPI(title="Grants Hub API (Minimal)")
 
-# Create tables on startup (kept simple; Alembic can be added later)
-with engine.begin() as conn:
-    conn.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto;"))
-models.Base.metadata.create_all(bind=engine)
+# Create DB objects on startup (simple path; Alembic can be added later)
+if os.getenv("TESTING") != "1":
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto;"))
+        models.Base.metadata.create_all(bind=engine)
+    except Exception as e:
+        print(f"[startup] DB init skipped or failed: {e}")
 
 @app.get("/health")
 def health():
@@ -24,7 +29,7 @@ def list_opps(db: Session = Depends(get_db), limit: int = 50, offset: int = 0):
 def create_or_update(opportunity: OpportunityIn, db: Session = Depends(get_db)):
     return crud.upsert_opportunity(db, opportunity)
 
-# Dev-only seeding endpoint to quickly verify the DB → API flow
+# Dev-only helper to seed one record
 @app.post("/_seed")
 def seed(db: Session = Depends(get_db)):
     sample = OpportunityIn(
@@ -40,5 +45,4 @@ def seed(db: Session = Depends(get_db)):
         status="open",
         links={"landing":"https://example.org"}
     )
-    crud.upsert_opportunity(db, sample)
-    return {"inserted": 1}
+    return {"inserted": 1} if crud.upsert_opportunity(db, sample) else {"inserted": 0}
