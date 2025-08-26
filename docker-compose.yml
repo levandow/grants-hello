@@ -1,20 +1,15 @@
-version: "3.9"
 services:
   postgres:
     image: postgres:16
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
-    ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=grants
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 5s
-      retries: 10
+      retries: 5
 
   api:
     build: .
@@ -27,31 +22,24 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    command: >
-      uvicorn app.main:app --host 0.0.0.0 --port 8080 --reload
     volumes:
       - ./app:/app/app
       - ./requirements.txt:/app/requirements.txt
+    command: >
+      uvicorn app.main:app --host 0.0.0.0 --port 8080 --reload
 
-# docker-compose.yml
   ingest:
     build: .
     env_file: [".env"]
     environment:
       - PYTHONPATH=/app
-      - API_URL=http://api:8080    # <— point to the API service, not localhost
+      - API_URL=http://api:8080
+    working_dir: /app
     depends_on:
       api:
         condition: service_started
-    working_dir: /app
     volumes:
       - ./scripts:/app/scripts
       - ./app:/app/app
       - ./packages:/app/packages
     command: python scripts/ingest_any.py
-
-
-volumes:
-  pgdata:
-
-

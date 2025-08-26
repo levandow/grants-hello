@@ -78,7 +78,6 @@ def list_opps(
         deadline_before=deadline_before, deadline_after=deadline_after,
         sort=sort, page=page, page_size=page_size,
     )
-    # Pagination metadata via headers (simple, frontend-friendly)
     response.headers["X-Total-Count"] = str(total)
     response.headers["X-Page"] = str(page)
     response.headers["X-Page-Size"] = str(page_size)
@@ -86,7 +85,11 @@ def list_opps(
 
 @app.post("/opportunities", response_model=OpportunityOut)
 def create_or_update(opportunity: OpportunityIn, db: Session = Depends(get_db)):
-    return crud.upsert_opportunity(db, opportunity)
+    try:
+        return crud.upsert_opportunity(db, opportunity)
+    except Exception as e:
+        # This makes 500s show the exact cause in the response while developing
+        raise HTTPException(status_code=500, detail=str(e))
 
 # Dev-only helper to seed one record
 @app.post("/_seed")

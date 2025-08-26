@@ -1,21 +1,35 @@
-import os
-import requests
+# scripts/ingest_any.py
+import os, time, requests, sys
 from app.normalize import normalize
 from app.connectors.dummy_json import DummyJSONConnector
 
 API_URL = os.getenv("API_URL", "http://localhost:8080")
 
+def wait_for_api(timeout=90):
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            r = requests.get(f"{API_URL}/health", timeout=3)
+            if r.ok:
+                print(f"API ready at {API_URL}")
+                return
+        except requests.RequestException:
+            pass
+        time.sleep(1)
+    print(f"ERROR: API not reachable at {API_URL} within {timeout}s", file=sys.stderr)
+    sys.exit(1)
+
 def upsert(record: dict) -> None:
     n = normalize(record)
     r = requests.post(f"{API_URL}/opportunities", json=n, timeout=30)
     if r.status_code != 200:
-        raise RuntimeError(f"Upsert failed {n.get('source_uid')}: {r.status_code} {r.text}")
+        print(f"❌ Upsert failed [{r.status_code}] for {n.get('source_uid')}: {r.text}", file=sys.stderr)
+        r.raise_for_status()
     print(f"✅ {n.get('source')}:{n.get('source_uid')}")
 
 def main():
-    # swap this connector later (e.g., VinnovaConnector, FTOPConnector)
-    conn = DummyJSONConnector()
-    for rec in conn.fetch():
+    wait_for_api()
+    for rec in DummyJSONConnector().fetch():
         upsert(rec)
 
 if __name__ == "__main__":
