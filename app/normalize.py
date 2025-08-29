@@ -74,7 +74,6 @@ def _iso_or_none(v: Optional[str]) -> Optional[str]:
     if not v:
         return None
     v = str(v).strip()
-    # try common formats, normalize to YYYY-MM-DD
     for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S.%fZ",
                 "%d-%m-%Y", "%d/%m/%Y"):
         try:
@@ -88,7 +87,8 @@ def _iso_or_none(v: Optional[str]) -> Optional[str]:
             pass
     return None
 
-def _status_from_dates(opens_at: Optional[str], closes_at: Optional[str]) -> str:
+def _status_from_dates_or_year(opens_at: Optional[str], closes_at: Optional[str], dnr: str) -> str:
+    # 1) If dates exist → use them.
     today = date.today()
     if opens_at:
         try:
@@ -101,17 +101,32 @@ def _status_from_dates(opens_at: Optional[str], closes_at: Optional[str]) -> str
             return "closed" if date.fromisoformat(closes_at) < today else "open"
         except Exception:
             pass
+    # 2) No dates → infer from diary number year (e.g., "2014-04155").
+    try:
+        year = int((dnr or "")[:4])
+        if year < today.year:
+            return "closed"
+    except Exception:
+        pass
     return "open"
 
 def _extract_link(obj: Any) -> str:
     if isinstance(obj, str):
         return obj.strip()
     if isinstance(obj, dict):
-        for k in ("URL", "Url", "url", "HRef", "href", "link"):
+        for k in ("URL", "Url", "url", "HRef", "href", "link", "fileURL", "FileURL"):
             v = obj.get(k)
             if isinstance(v, str) and v.strip():
                 return v.strip()
     return ""
+
+def _clean_text(s: Optional[str]) -> Optional[str]:
+    if not s:
+        return None
+    s2 = s.strip()
+    if not s2 or s2.lower() == "x":
+        return None
+    return s2
 
 def normalize_vinnova(u: dict) -> dict:
     # IDs
@@ -119,8 +134,10 @@ def normalize_vinnova(u: dict) -> dict:
     uid = dnr or f"vno-{abs(hash((u.get('Titel') or u.get('TitelEngelska') or '').lower()))}"
 
     # Titles
-    title_sv = (u.get("Titel") or "").strip() or None
-    title_en = (u.get("TitelEngelska") or "").strip() or None
+    title_sv = _clean_text(u.get("Titel"))
+    title_en = _clean_text(u.get("TitelEngelska"))
+    if not title_en and title_sv:
+        title_en = title_sv  # fallback to Swedish
 
     # Summary: prefer first WebText paragraph; fallback to Beskrivning fields
     summary_sv = None
@@ -128,30 +145,36 @@ def normalize_vinnova(u: dict) -> dict:
     webtexts = u.get("WebTextLista") or []
     if isinstance(webtexts, list) and webtexts:
         w0 = webtexts[0] or {}
-        summary_sv = (w0.get("TextSv") or "").strip() or None
-        summary_en = (w0.get("TextEn") or "").strip() or None
-    if not summary_sv:
-        summary_sv = (u.get("Beskrivning") or "").strip() or None
-    if not summary_en:
-        summary_en = (u.get("BeskrivningEngelska") or "").strip() or None
+        summary_sv = _clean_text(w0.get("TextSv")) or _clean_text(u.get("Beskrivning"))
+        summary_en = _clean_text(w0.get("TextEn")) or _clean_text(u.get("BeskrivningEngelska"))
+    else:
+        summary_sv = _clean_text(u.get("Beskrivning"))
+        summary_en = _clean_text(u.get("BeskrivningEngelska")) or summary_sv
 
     # Programme: infer Innovair if in title
-    programme = "Innovair" if (title_sv or title_en or "").lower().__contains__("innovair") else None
+    programme = None
+    tblob = " ".join([t for t in [title_sv or "", title_en or ""]])
+    if "innovair" in tblob.lower():
+        programme = "Innovair"
 
-    # Links: landing = first in LankLista; guidelines = Primary document
+    # Links
     links: Dict[str, str] = {}
+    # 1) LankLista → landing
     for item in (u.get("LankLista") or []):
         url = _extract_link(item)
         if url:
             links["landing"] = url
             break
-    if not links.get("landing"):
-        links["landing"] = ""  # schema requires string
-
+    # 2) Primary document → guidelines
     for doc in (u.get("DokumentLista") or []):
         if doc.get("Primary"):
-            links["guidelines"] = doc.get("fileURL") or ""
+            links["guidelines"] = doc.get("fileURL") or _extract_link(doc) or ""
             break
+    # 3) If still no landing, fall back to guidelines (so there is always a click target)
+    if not links.get("landing"):
+        links["landing"] = links.get("guidelines", "") or ""
+    # Ensure string
+    links["landing"] = links.get("landing", "") or ""
 
     # Dates
     opens_at  = _iso_or_none(u.get("Oppningsdatum") or u.get("Öppningsdatum") or u.get("OpeningDate"))
@@ -161,27 +184,27 @@ def normalize_vinnova(u: dict) -> dict:
     if closes_at:
         deadlines.append({"type": "single", "date": closes_at})
 
-    # Status from dates
-    status = _status_from_dates(opens_at, closes_at)
+    # Status (dates or diary-year fallback)
+    status = _status_from_dates_or_year(opens_at, closes_at, dnr)
 
-    # Tags (light heuristic)
+    # Tags
     tags = ["sweden", "public-funder"]
     text_blob = " ".join(filter(None, [title_sv, title_en, summary_sv, summary_en])).lower()
-    if "flyg" in text_blob or "aero" in text_blob or "air" in text_blob:
+    if any(k in text_blob for k in ("flyg", "aero", "air", "aviation")):
         tags.append("aviation")
-    if "smf" in text_blob or "sme" in text_blob:
+    if any(k in text_blob for k in ("smf", "sme")):
         tags.append("sme")
 
-    # Contacts to notes (since schema lacks a contacts field)
+    # Contacts → notes (dev-friendly; schema has no contacts field)
     notes = None
     contacts = u.get("KontaktLista") or []
     if contacts:
         lines = []
-        for c in contacts[:6]:  # avoid huge notes
-            nm = c.get("Namn") or ""
-            em = c.get("Epost") or ""
-            rl = c.get("Roll") or ""
-            tel = c.get("Telefon") or ""
+        for c in contacts[:6]:
+            nm = (c.get("Namn") or "").strip()
+            em = (c.get("Epost") or "").strip()
+            tel = (c.get("Telefon") or "").strip()
+            rl = (c.get("Roll") or "").strip()
             line = " / ".join([s for s in (nm, em, tel, rl) if s])
             if line:
                 lines.append(line)
