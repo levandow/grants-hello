@@ -228,6 +228,135 @@ def normalize_vinnova(u: dict) -> dict:
         "notes": notes,
     }
 
+def normalize_vinnova_round(r: dict) -> dict:
+    """
+    Normalize an Ansökningsomgång (application round) record into the unified schema.
+    Fields in the feed often include:
+      - AnsokningsomgangDnr or Diarienummer  (unique id for the round)
+      - Titel / TitelEngelska
+      - Oppningsdatum / Stangningsdatum (open/close)
+      - LankLista (list of links; objects with URL/Beskrivning)
+      - DokumentLista (files; fileURL or DokumentID)
+      - WebTextLista (TextSv/TextEn paragraphs)
+      - Sponsor/program info may be implicit (Vinnova / programme name in title)
+    """
+    def _get(*names):
+        for n in names:
+            if n in r and r[n] not in (None, ""):
+                return r[n]
+        return None
+
+    def _extract_link(obj):
+        if isinstance(obj, str):
+            return obj.strip()
+        if isinstance(obj, dict):
+            for k in ("URL","Url","url","HRef","href","link"):
+                v = obj.get(k)
+                if isinstance(v, str) and v.strip():
+                    return v.strip()
+        return ""
+
+    def _doc_url(d: dict) -> str:
+        url = (d.get("fileURL") or d.get("URL") or "").strip() if isinstance(d, dict) else ""
+        if url:
+            return url
+        did = (d.get("DokumentID") or "").strip() if isinstance(d, dict) else ""
+        return f"https://data.vinnova.se/api/file/{did}" if did else ""
+
+    # IDs
+    dnr = (_get("AnsokningsomgangDnr", "Diarienummer", "Dnr") or "").strip()
+    uid = dnr or f"vno-round-{abs(hash((_get('Titel','TitelEngelska') or '').lower()))}"
+
+    # Titles
+    title_sv = (_get("Titel") or "").strip() or None
+    title_en = (_get("TitelEngelska") or "").strip() or None
+
+    # Summary (prefer first web paragraph)
+    summary_sv = None; summary_en = None
+    w = r.get("WebTextLista") or []
+    if isinstance(w, list) and w:
+        summary_sv = (w[0].get("TextSv") or "").strip() or None
+        summary_en = (w[0].get("TextEn") or "").strip() or None
+    if not summary_sv:
+        summary_sv = (_get("Beskrivning", "Sammanfattning") or "").strip() or None
+    if not summary_en:
+        summary_en = (_get("BeskrivningEngelska", "SummaryEnglish") or "").strip() or None
+
+    # Programme (heuristic from title)
+    programme = "Innovair" if (title_sv or title_en or "").lower().__contains__("innovair") else None
+
+    # Links
+    links = {}
+    # landing: first link in LankLista if present
+    for item in (r.get("LankLista") or []):
+        url = _extract_link(item)
+        if url:
+            links["landing"] = url
+            break
+    # guidelines: primary document
+    primary = None
+    for d in (r.get("DokumentLista") or []):
+        if isinstance(d, dict) and d.get("Primary"):
+            primary = d; break
+    if primary:
+        links["guidelines"] = _doc_url(primary)
+    # if no landing at all, fall back to any doc
+    if not links.get("landing"):
+        for d in (r.get("DokumentLista") or []):
+            url = _doc_url(d)
+            if url:
+                links["landing"] = url
+                links.setdefault("guidelines", url)
+                break
+    links["landing"] = links.get("landing", "") or ""
+
+    # Dates
+    opens_at  = _iso_or_none(_get("Oppningsdatum", "Öppningsdatum", "OpeningDate"))
+    closes_at = _iso_or_none(_get("Stangningsdatum", "Stängningsdatum", "ClosingDate"))
+
+    deadlines = []
+    if closes_at:
+        deadlines.append({"type": "single", "date": closes_at})
+
+    # Status
+    status = _status_from_dates_or_year(opens_at, closes_at, dnr or "")
+
+    # Tags (light)
+    tags = ["sweden", "public-funder"]
+    text_blob = " ".join(filter(None, [title_sv, title_en, summary_sv, summary_en])).lower()
+    if any(k in text_blob for k in ("flyg", "aero", "air", "aviation")): tags.append("aviation")
+    if any(k in text_blob for k in ("smf", "sme")): tags.append("sme")
+
+    # Notes (optional: contacts etc., if present on rounds)
+    notes = None
+    contacts = r.get("KontaktLista") or []
+    if contacts:
+        lines = []
+        for c in contacts[:6]:
+            nm = (c.get("Namn") or "").strip()
+            em = (c.get("Epost") or "").strip()
+            tel = (c.get("Telefon") or "").strip()
+            rl = (c.get("Roll") or "").strip()
+            line = " / ".join([s for s in (nm, em, tel, rl) if s])
+            if line: lines.append(line)
+        if lines: notes = "Contacts:\n- " + "\n- ".join(lines)
+
+    return {
+        "id": f"vinnova_round:{uid}",
+        "source": "vinnova_rounds",
+        "source_uid": uid,
+        "title":   {"sv": title_sv,   "en": title_en},
+        "summary": {"sv": summary_sv, "en": summary_en},
+        "programme": programme,
+        "sponsor": "Vinnova",
+        "tags": tags,
+        "deadlines": deadlines,
+        "status": status,
+        "links": links,
+        "opens_at": opens_at,
+        "closes_at": closes_at,
+        "notes": notes,
+    }
 
 
 def normalize_ftop(x: dict) -> dict:

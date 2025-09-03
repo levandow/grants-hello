@@ -2,7 +2,7 @@ from __future__ import annotations
 import os, datetime as dt, requests
 from typing import Iterable, Dict, Any
 
-VINNOVA_BASE = "https://data.vinnova.se/api/utlysningar"
+VINNOVA_BASE = "https://data.vinnova.se/api/ansokningsomgangar"
 VINNOVA_SINCE = os.getenv("VINNOVA_SINCE", "2024-01-01")
 
 def _since_date() -> str:

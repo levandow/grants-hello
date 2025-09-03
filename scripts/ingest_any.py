@@ -3,8 +3,9 @@ import os, time, requests, sys
 from app.normalize import normalize
 from app.connectors.dummy_json import DummyJSONConnector
 from app.connectors.vinnova import fetch as vinnova_fetch
+from app.connectors.vinnova_rounds import fetch as vinnova_rounds_fetch
 from app.connectors.eu_ftop import fetch as ftop_fetch
-from app.normalize import normalize_vinnova, normalize_ftop
+from app.normalize import normalize_vinnova, normalize_ftop, normalize_vinnova_round
 
 
 API_URL = os.getenv("API_URL", "http://localhost:8080")
@@ -36,8 +37,13 @@ def main():
     for rec in DummyJSONConnector().fetch():
         upsert(rec)
     
-    for rec in vinnova_fetch():
-        upsert(normalize_vinnova(rec))
+    #for rec in vinnova_fetch():
+    #    upsert(normalize_vinnova(rec))
+
+    for rec in vinnova_rounds_fetch():
+        upsert(normalize_vinnova_round(rec))
+
+
 
 if __name__ == "__main__":
     main()

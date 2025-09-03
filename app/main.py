@@ -1,10 +1,12 @@
 import os
-from fastapi import FastAPI, Depends, Query, Response
+from fastapi import FastAPI, Depends, Query, Response, HTTPException
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from .db import engine, get_db
 from . import models, crud
 from .schemas import OpportunityIn, OpportunityOut
+from typing import Optional, List
+from datetime import date
 
 app = FastAPI(title="Grants Hub API (Minimal)")
 
@@ -59,29 +61,34 @@ def health():
 
 @app.get("/opportunities", response_model=list[OpportunityOut])
 def list_opps(
-    response: Response,
-    q: str | None = Query(None, description="Free text search"),
-    status: str | None = Query(None, pattern="^(open|planned|closed)$"),
-    sponsor: str | None = None,
-    programme: str | None = None,
-    tag: str | None = None,
-    deadline_before: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
-    deadline_after: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
-    sort: str = Query("recent", pattern="^(recent|deadline_asc|deadline_desc)$"),
-    page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
-    db: Session = Depends(get_db),
+    sponsor: Optional[str] = None,
+    q: Optional[str] = None,
+    tags: Optional[str] = None,
+    status: Optional[str] = None,
+    deadline_after: Optional[date] = None,
+    deadline_before: Optional[date] = None,
+    sort: Optional[str] = "deadline_desc",
+    page: int = 1,
+    page_size: int = 10,
 ):
-    rows, total = crud.search_opportunities(
-        db,
-        q=q, status=status, sponsor=sponsor, programme=programme, tag=tag,
-        deadline_before=deadline_before, deadline_after=deadline_after,
-        sort=sort, page=page, page_size=page_size,
+    return crud.search_opportunities(
+        sponsor=sponsor,
+        query=q,
+        tags=tags,
+        status=status,
+        deadline_after=deadline_after,
+        deadline_before=deadline_before,
+        sort=sort,
+        page=page,
+        page_size=page_size,
     )
-    response.headers["X-Total-Count"] = str(total)
-    response.headers["X-Page"] = str(page)
-    response.headers["X-Page-Size"] = str(page_size)
-    return rows
+
+@app.get("/opportunities/{oid}", response_model=OpportunityOut)
+def get_one(oid: str, db: Session = Depends(get_db)):
+    obj = db.query(models.Opportunity).filter(models.Opportunity.id == oid).one_or_none()
+    if not obj:
+        raise HTTPException(404, "not found")
+    return obj
 
 @app.post("/opportunities", response_model=OpportunityOut)
 def create_or_update(opportunity: OpportunityIn, db: Session = Depends(get_db)):
