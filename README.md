@@ -11,9 +11,10 @@ Built with **FastAPI** + **PostgreSQL** and containerized with **Docker Compose*
 - 🌐 REST API powered by FastAPI  
 - 🗄 PostgreSQL database with SQLAlchemy ORM  
 - 🔄 Unified data schema for grant opportunities  
-- ⚙️ CI pipeline on GitHub Actions (builds & runs health check)  
-- 🧪 Simple seed endpoint for demo/testing  
-- 🔒 `.env` support (with example file)  
+- ⚙️ CI pipeline on GitHub Actions (builds & runs health check)
+- 🧪 Simple seed endpoint for demo/testing
+- 🎯 Facet endpoint for dynamic filter options
+- 🔒 `.env` support (with example file)
 
 ---
 

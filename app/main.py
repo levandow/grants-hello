@@ -9,6 +9,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .db import engine, get_db
 from . import models, crud
+
+from .schemas import OpportunityIn, OpportunityOut, Facets
+from typing import Optional, List
+from datetime import date
+
 from .schemas import OpportunityIn, OpportunityOut
 try:
     # Pydantic v2
@@ -70,6 +75,13 @@ def health():
     return {"status": "ok"}
 
 
+
+@app.get("/facets", response_model=Facets)
+def facets(db: Session = Depends(get_db)):
+    return crud.get_facets(db)
+
+@app.get("/opportunities", response_model=list[OpportunityOut])
+
 # --------------------------- list/search ---------------------------
 
 class OpportunitiesResponse(BaseModel):
@@ -84,6 +96,7 @@ class OpportunitiesResponse(BaseModel):
             extra = "ignore"
 
 @app.get("/opportunities", response_model=OpportunitiesResponse)
+
 def list_opps(
     q: Optional[str] = Query(None, description="Free text query"),
     query: Optional[str] = Query(None, description="Alias for q"),
