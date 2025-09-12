@@ -80,8 +80,6 @@ def health():
 def facets(db: Session = Depends(get_db)):
     return crud.get_facets(db)
 
-@app.get("/opportunities", response_model=list[OpportunityOut])
-
 # --------------------------- list/search ---------------------------
 
 class OpportunitiesResponse(BaseModel):
