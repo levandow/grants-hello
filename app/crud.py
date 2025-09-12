@@ -145,3 +145,40 @@ def list_opportunities(db: Session, limit: int = 50, offset: int = 0) -> List[mo
         .limit(limit)
         .all()
     )
+
+
+def get_facets(db: Session) -> dict:
+    """Collect distinct values used for filtering (facets)."""
+    O = models.Opportunity
+
+    sponsors = [
+        r[0]
+        for r in db.query(O.sponsor)
+        .filter(O.sponsor.isnot(None))
+        .distinct()
+        .order_by(O.sponsor)
+    ]
+
+    programmes = [
+        r[0]
+        for r in db.query(O.programme)
+        .filter(O.programme.isnot(None))
+        .distinct()
+        .order_by(O.programme)
+    ]
+
+    statuses = [r[0] for r in db.query(O.status).distinct().order_by(O.status)]
+
+    tag_rows = db.query(O.tags).all()
+    tag_set = set()
+    for arr, in tag_rows:
+        if arr:
+            tag_set.update(arr)
+    tags = sorted(tag_set)
+
+    return {
+        "sponsors": sponsors,
+        "programmes": programmes,
+        "statuses": statuses,
+        "tags": tags,
+    }

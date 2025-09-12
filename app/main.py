@@ -4,7 +4,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 from .db import engine, get_db
 from . import models, crud
-from .schemas import OpportunityIn, OpportunityOut
+from .schemas import OpportunityIn, OpportunityOut, Facets
 from typing import Optional, List
 from datetime import date
 
@@ -58,6 +58,11 @@ if os.getenv("TESTING") != "1":
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/facets", response_model=Facets)
+def facets(db: Session = Depends(get_db)):
+    return crud.get_facets(db)
 
 @app.get("/opportunities", response_model=list[OpportunityOut])
 def list_opps(

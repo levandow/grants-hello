@@ -51,3 +51,10 @@ class OpportunityOut(BaseModel):
     opens_at: Optional[date] = None
     closes_at: Optional[date] = None
     notes: Optional[str] = None
+
+
+class Facets(BaseModel):
+    sponsors: List[str] = Field(default_factory=list)
+    programmes: List[str] = Field(default_factory=list)
+    statuses: List[str] = Field(default_factory=list)
+    tags: List[str] = Field(default_factory=list)
