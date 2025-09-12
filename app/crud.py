@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Optional, Tuple, List
 
-from sqlalchemy import select, func, and_, or_, cast, String
+from sqlalchemy import select, func, and_, or_, cast, String, text
 from sqlalchemy.orm import Session
 
 from . import models
@@ -96,8 +96,9 @@ def search_opportunities(
     if programme:
         conds.append(O.programme == programme)
     if tag:
-        # tags is JSON array -> cast to text and LIKE match (portable & simple)
-        conds.append(cast(O.tags, String).ilike(f"%{tag}%"))
+        from sqlalchemy import text
+        # Portable: LOWER(CAST(tags AS TEXT)) LIKE '%tag%'
+        conds.append(func.lower(cast(O.tags, String)).like(f"%{tag.lower()}%"))
 
     # Deadline window (strings → Python dates, compare with Date column)
     d_after = _coerce_date(deadline_after)

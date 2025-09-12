@@ -1,16 +1,48 @@
 import os
-from fastapi import FastAPI, Depends, Query, Response, HTTPException
+from datetime import date
+from typing import Optional, List
+
+from fastapi import FastAPI, Depends, Query, HTTPException
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+from fastapi.middleware.cors import CORSMiddleware
+
 from .db import engine, get_db
 from . import models, crud
+
 from .schemas import OpportunityIn, OpportunityOut, Facets
 from typing import Optional, List
 from datetime import date
 
+from .schemas import OpportunityIn, OpportunityOut
+try:
+    # Pydantic v2
+    from pydantic import BaseModel, Field, ConfigDict
+    V2 = True
+except Exception:
+    # Pydantic v1 fallback
+    from pydantic import BaseModel, Field
+    class _Cfg: ...
+    ConfigDict = _Cfg  # dummy
+    V2 = False
+
+
+# --------------------------- app & startup ---------------------------
+
+
+
 app = FastAPI(title="Grants Hub API (Minimal)")
 
-# Create DB objects on startup (simple path; Alembic can be added later)
+# --- CORS (dev-friendly; tighten in production) ---
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],          # replace with exact domain(s) when deploying
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Create DB objects and indexes on startup (simple path; Alembic can be added later)
 if os.getenv("TESTING") != "1":
     try:
         with engine.begin() as conn:
@@ -21,43 +53,27 @@ if os.getenv("TESTING") != "1":
 
     try:
         with engine.begin() as conn:
-            # JSON path indexes to accelerate filters/search
-            conn.execute(text("""
-                CREATE INDEX IF NOT EXISTS idx_opps_status ON opportunities (status);
-            """))
-            conn.execute(text("""
-                CREATE INDEX IF NOT EXISTS idx_opps_sponsor ON opportunities (sponsor);
-            """))
-            conn.execute(text("""
-                CREATE INDEX IF NOT EXISTS idx_opps_programme ON opportunities (programme);
-            """))
-            conn.execute(text("""
-                CREATE INDEX IF NOT EXISTS idx_opps_closes_at ON opportunities (closes_at);
-            """))
-            # Title/summary English text indexes (functional)
-            conn.execute(text("""
-                CREATE INDEX IF NOT EXISTS idx_opps_title_en
-                ON opportunities ((title->>'en'));
-            """))
-            conn.execute(text("""
-                CREATE INDEX IF NOT EXISTS idx_opps_summary_en
-                ON opportunities ((summary->>'en'));
-            """))
-            conn.execute(text("""
-                CREATE INDEX IF NOT EXISTS idx_opps_title_sv
-                ON opportunities ((title->>'sv'));
-            """))
-            conn.execute(text("""
-                CREATE INDEX IF NOT EXISTS idx_opps_summary_sv
-                ON opportunities ((summary->>'sv'));
-            """))
+            # Scalar indexes to accelerate filters/sorting
+            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_opps_status ON opportunities (status);"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_opps_sponsor ON opportunities (sponsor);"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_opps_programme ON opportunities (programme);"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_opps_closes_at ON opportunities (closes_at);"))
+            # Functional indexes over JSON text for lightweight search
+            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_opps_title_en   ON opportunities ((title->>'en'));"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_opps_summary_en ON opportunities ((summary->>'en'));"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_opps_title_sv   ON opportunities ((title->>'sv'));"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_opps_summary_sv ON opportunities ((summary->>'sv'));"))
         print("[startup] Index checks complete")
     except Exception as e:
         print(f"[startup] Index creation skipped: {e}")
 
+
+# --------------------------- health ---------------------------
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
 
 
 @app.get("/facets", response_model=Facets)
@@ -65,45 +81,89 @@ def facets(db: Session = Depends(get_db)):
     return crud.get_facets(db)
 
 @app.get("/opportunities", response_model=list[OpportunityOut])
+
+# --------------------------- list/search ---------------------------
+
+class OpportunitiesResponse(BaseModel):
+    items: List[OpportunityOut] = Field(default_factory=list)
+    total: int
+    page: int
+    page_size: int
+    if V2:
+        model_config = ConfigDict(extra="ignore")
+    else:
+        class Config:
+            extra = "ignore"
+
+@app.get("/opportunities", response_model=OpportunitiesResponse)
+
 def list_opps(
+    q: Optional[str] = Query(None, description="Free text query"),
+    query: Optional[str] = Query(None, description="Alias for q"),
     sponsor: Optional[str] = None,
-    q: Optional[str] = None,
-    tags: Optional[str] = None,
+    programme: Optional[str] = None,
     status: Optional[str] = None,
-    deadline_after: Optional[date] = None,
-    deadline_before: Optional[date] = None,
-    sort: Optional[str] = "deadline_desc",
-    page: int = 1,
-    page_size: int = 10,
+    tag: Optional[str] = Query(None, description="Match a tag string"),
+    deadline_after: Optional[str] = Query(None, description="YYYY-MM-DD"),
+    deadline_before: Optional[str] = Query(None, description="YYYY-MM-DD"),
+    sort: str = Query("recent", description="recent | deadline_asc | deadline_desc"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
+    db: Session = Depends(get_db),
 ):
-    return crud.search_opportunities(
-        sponsor=sponsor,
-        query=q,
-        tags=tags,
-        status=status,
-        deadline_after=deadline_after,
-        deadline_before=deadline_before,
-        sort=sort,
-        page=page,
-        page_size=page_size,
-    )
+    """
+    Paged list with filters. Returns {"items":[...], "total":N, "page":x, "page_size":y}.
+    Accepts both ?q= and ?query= for convenience.
+    """
+    try:
+        term = q or query
+        rows, total = crud.search_opportunities(
+            db,
+            q=term,
+            status=status,
+            sponsor=sponsor,
+            programme=programme,
+            tag=tag,
+            deadline_before=deadline_before,
+            deadline_after=deadline_after,
+            sort=sort,
+            page=page,
+            page_size=page_size,
+        )
+        # Serialize ORM → schema (ensures clean JSON)
+        items = [
+            OpportunityOut.model_validate(o, from_attributes=True).model_dump()
+            for o in rows
+        ]
+        return {"items": items, "total": total, "page": page, "page_size": page_size}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# --------------------------- get one ---------------------------
 
 @app.get("/opportunities/{oid}", response_model=OpportunityOut)
 def get_one(oid: str, db: Session = Depends(get_db)):
     obj = db.query(models.Opportunity).filter(models.Opportunity.id == oid).one_or_none()
     if not obj:
         raise HTTPException(404, "not found")
-    return obj
+    return OpportunityOut.model_validate(obj, from_attributes=True)
+
+
+# --------------------------- upsert ---------------------------
 
 @app.post("/opportunities", response_model=OpportunityOut)
 def create_or_update(opportunity: OpportunityIn, db: Session = Depends(get_db)):
     try:
-        return crud.upsert_opportunity(db, opportunity)
+        obj = crud.upsert_opportunity(db, opportunity)
+        return OpportunityOut.model_validate(obj, from_attributes=True)
     except Exception as e:
-        # This makes 500s show the exact cause in the response while developing
+        # During development, expose the exact cause to the client
         raise HTTPException(status_code=500, detail=str(e))
 
-# Dev-only helper to seed one record
+
+# --------------------------- dev seed ---------------------------
+
 @app.post("/_seed")
 def seed(db: Session = Depends(get_db)):
     sample = OpportunityIn(
@@ -115,8 +175,11 @@ def seed(db: Session = Depends(get_db)):
         programme="National",
         sponsor="Example Sponsor",
         tags=["electric aviation"],
-        deadlines=[{"type":"single","date":"2025-12-01"}],
+        deadlines=[{"type": "single", "date": "2025-12-01"}],
         status="open",
-        links={"landing":"https://example.org"}
+        links={"landing": "https://example.org"},
+        opens_at="2025-10-01",
+        closes_at="2025-12-01",
     )
-    return {"inserted": 1} if crud.upsert_opportunity(db, sample) else {"inserted": 0}
+    obj = crud.upsert_opportunity(db, sample)
+    return {"inserted": 1, "id": obj.id}
