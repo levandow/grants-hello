@@ -129,10 +129,12 @@ def list_opps(
             page_size=page_size,
         )
         # Serialize ORM → schema (ensures clean JSON)
-        items = [
-            OpportunityOut.model_validate(o, from_attributes=True).model_dump()
-            for o in rows
-        ]
+        items = []
+        for o in rows:
+            base = OpportunityOut.model_validate(o, from_attributes=True).model_dump()
+            if getattr(o, "extra", None):
+                base.update(o.extra)
+            items.append(base)
         return {"items": items, "total": total, "page": page, "page_size": page_size}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -145,7 +147,10 @@ def get_one(oid: str, db: Session = Depends(get_db)):
     obj = db.query(models.Opportunity).filter(models.Opportunity.id == oid).one_or_none()
     if not obj:
         raise HTTPException(404, "not found")
-    return OpportunityOut.model_validate(obj, from_attributes=True)
+    base = OpportunityOut.model_validate(obj, from_attributes=True).model_dump()
+    if getattr(obj, "extra", None):
+        base.update(obj.extra)
+    return base
 
 
 # --------------------------- upsert ---------------------------
@@ -154,7 +159,10 @@ def get_one(oid: str, db: Session = Depends(get_db)):
 def create_or_update(opportunity: OpportunityIn, db: Session = Depends(get_db)):
     try:
         obj = crud.upsert_opportunity(db, opportunity)
-        return OpportunityOut.model_validate(obj, from_attributes=True)
+        base = OpportunityOut.model_validate(obj, from_attributes=True).model_dump()
+        if getattr(obj, "extra", None):
+            base.update(obj.extra)
+        return base
     except Exception as e:
         # During development, expose the exact cause to the client
         raise HTTPException(status_code=500, detail=str(e))

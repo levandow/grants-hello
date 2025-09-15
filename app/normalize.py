@@ -420,6 +420,17 @@ def normalize_ftop(x: dict) -> dict:
     opens = _pick_date(x.get("openingDate"))
     closes = _pick_date(x.get("deadlineDate"))
 
+    # Additional descriptive fields that may be useful for clients
+    topic_conditions = _pick_text(
+        x.get("topicConditions") or x.get("topicCondition")
+    )
+    support_info = _pick_text(
+        x.get("supportInfo") or x.get("support") or x.get("supplementaryInformation")
+    )
+    budget_overview = _pick_text(
+        x.get("budgetOverview") or x.get("budget") or x.get("budgetSummary")
+    )
+
     uid = str(x.get("id") or x.get("callIdentifier") or "").strip()
     if not uid:
         fallback = title_en or summary_en or ""
@@ -501,4 +512,8 @@ def normalize_ftop(x: dict) -> dict:
         "opens_at": opens,
         "closes_at": closes,
         "notes": None,
+        # pass through extra informative fields
+        "topic_conditions": topic_conditions,
+        "support_info": support_info,
+        "budget_overview": budget_overview,
     }

@@ -1,6 +1,6 @@
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy import String, Date, JSON, Text
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 
 class Base(DeclarativeBase):
     pass
@@ -33,3 +33,6 @@ class Opportunity(Base):
     closes_at: Mapped[Optional[str]] = mapped_column(Date)
 
     notes: Mapped[Optional[str]] = mapped_column(Text)
+
+    # Store any additional metadata that doesn't have dedicated columns
+    extra: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)

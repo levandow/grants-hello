@@ -42,13 +42,22 @@ def upsert_opportunity(db: Session, data: OpportunityIn) -> models.Opportunity:
     payload["opens_at"] = _coerce_date(payload.get("opens_at"))
     payload["closes_at"] = _coerce_date(payload.get("closes_at"))
 
+    # Separate unknown keys into the "extra" JSON column
+    cols = set(c.name for c in models.Opportunity.__table__.columns)
+    extras = {k: payload.pop(k) for k in list(payload.keys()) if k not in cols}
+
     O = models.Opportunity
     obj = db.query(O).filter(O.source_uid == data.source_uid).one_or_none()
 
     if obj is None:
+        payload["extra"] = extras
         obj = O(**payload)
         db.add(obj)
     else:
+        # Merge new extras with existing ones
+        merged_extra = dict(getattr(obj, "extra", {}) or {})
+        merged_extra.update(extras)
+        payload["extra"] = merged_extra
         for k, v in payload.items():
             setattr(obj, k, v)
 
