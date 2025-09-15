@@ -4,7 +4,7 @@ import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 os.environ["TESTING"] = "1"
 
-from app.normalize import normalize
+from app.normalize import normalize, normalize_ftop
 
 def test_normalize_minimal():
     rec = {
@@ -18,3 +18,13 @@ def test_normalize_minimal():
     assert n["deadlines"][0]["date"] == "2025-12-01"
     assert set(n["title"].keys()) == {"sv","en"}
     assert n["topic_codes"] == []
+
+
+def test_ftop_uid_fallback():
+    rec = {"title": {"text": "Example"}}
+    n = normalize_ftop(rec)
+    assert n["source_uid"], "source_uid should not be empty"
+    assert n["id"].startswith("euftop:")
+    # Ensure overall normalize accepts it
+    normalized = normalize(n)
+    assert normalized["source_uid"] == n["source_uid"]

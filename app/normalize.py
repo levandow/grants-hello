@@ -371,8 +371,6 @@ def normalize_vinnova_round(r: dict) -> dict:
 
 
 def normalize_ftop(x: dict) -> dict:
-    uid = str(x.get("id") or x.get("callIdentifier") or "")
-
     def _pick_text(obj: Any, lang: str = "en") -> str | None:
         """Return first non-empty text from nested structures."""
         if not obj:
@@ -421,6 +419,14 @@ def normalize_ftop(x: dict) -> dict:
 
     opens = _pick_date(x.get("openingDate"))
     closes = _pick_date(x.get("deadlineDate"))
+
+    uid = str(x.get("id") or x.get("callIdentifier") or "").strip()
+    if not uid:
+        fallback = title_en or summary_en or ""
+        if fallback:
+            uid = f"ftop-{abs(hash(fallback.lower()))}"
+        else:
+            uid = f"ftop-{abs(hash(json.dumps(x, sort_keys=True)))}"
 
     deadlines: List[Dict[str, Any]] = []
     for d in x.get("deadlineDates") or x.get("deadlines") or []:
