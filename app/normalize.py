@@ -373,51 +373,111 @@ def normalize_vinnova_round(r: dict) -> dict:
 def normalize_ftop(x: dict) -> dict:
     uid = str(x.get("id") or x.get("callIdentifier") or "")
 
-    # Titles and summaries may come as dicts with language keys or plain strings
-    title = x.get("title") or {}
-    if isinstance(title, dict):
-        title_en = title.get("en") or next(iter(title.values()), None)
-    else:
-        title_en = str(title) if title else None
+    def _pick_text(obj: Any, lang: str = "en") -> str | None:
+        """Return first non-empty text from nested structures."""
+        if not obj:
+            return None
+        if isinstance(obj, str):
+            s = obj.strip()
+            return s or None
+        if isinstance(obj, list):
+            for item in obj:
+                v = _pick_text(item, lang)
+                if v:
+                    return v
+            return None
+        if isinstance(obj, dict):
+            if lang in obj and obj[lang]:
+                return _pick_text(obj[lang], lang)
+            for key in ("value", "text", "label", "title", "default", "defaultValue"):
+                v = obj.get(key)
+                if isinstance(v, str) and v.strip():
+                    return v.strip()
+            for v in obj.values():
+                if isinstance(v, str) and v.strip():
+                    return v.strip()
+                if isinstance(v, (dict, list)):
+                    vv = _pick_text(v, lang)
+                    if vv:
+                        return vv
+        return None
 
-    summary = x.get("summary") or x.get("objective") or x.get("objectiveText") or {}
-    if isinstance(summary, dict):
-        summary_en = summary.get("en") or next(iter(summary.values()), None)
-    else:
-        summary_en = str(summary) if summary else None
+    def _pick_date(v: Any) -> str | None:
+        if isinstance(v, dict):
+            for key in ("date", "value", "startDate", "endDate"):
+                if v.get(key):
+                    return _iso_or_none(v.get(key))
+        return _iso_or_none(v)
 
-    programme = None
-    prog = x.get("programme") or x.get("program")
-    if isinstance(prog, list):
-        programme = prog[0]
-    elif prog:
-        programme = prog
+    title_en = _pick_text(x.get("title"))
+    summary_en = _pick_text(
+        x.get("summary")
+        or x.get("objective")
+        or x.get("objectiveText")
+        or x.get("description")
+    )
 
-    opens = _iso_or_none(x.get("openingDate"))
-    closes = _iso_or_none(x.get("deadlineDate"))
+    programme = _pick_text(x.get("programme") or x.get("program"))
+
+    opens = _pick_date(x.get("openingDate"))
+    closes = _pick_date(x.get("deadlineDate"))
 
     deadlines: List[Dict[str, Any]] = []
-    for d in x.get("deadlineDates") or []:
-        dt = _iso_or_none(d.get("date") if isinstance(d, dict) else d)
+    for d in x.get("deadlineDates") or x.get("deadlines") or []:
+        dt = _pick_date(d.get("date") if isinstance(d, dict) else d)
         if dt:
             deadlines.append({"type": "single", "date": dt})
     if not deadlines and closes:
         deadlines.append({"type": "single", "date": closes})
 
-    status_map = {"31094502": "open", "31094505": "closed", "31094501": "planned"}
-    status = status_map.get(str(x.get("status")), "open")
+    status_raw = x.get("status")
+    if isinstance(status_raw, dict):
+        status_raw = (
+            status_raw.get("id")
+            or status_raw.get("code")
+            or status_raw.get("value")
+            or status_raw.get("label")
+        )
+    status_map = {
+        "31094502": "open",
+        "31094505": "closed",
+        "31094501": "planned",
+        "open": "open",
+        "closed": "closed",
+        "planned": "planned",
+    }
+    status = status_map.get(str(status_raw).strip().lower(), "open")
 
-    link = x.get("url") or x.get("topicUrl") or x.get("link") or ""
+    link = ""
+    for key in ("url", "topicUrl", "topicURL", "link", "links"):
+        v = x.get(key)
+        if not v:
+            continue
+        if isinstance(v, list):
+            for item in v:
+                link = _extract_link(item)
+                if link:
+                    break
+        else:
+            link = _extract_link(v)
+        if link:
+            break
 
     topic_codes: List[str] = []
-    topics = x.get("topic") or x.get("topics")
-    if isinstance(topics, list):
-        topic_codes.extend(str(t) for t in topics if t)
-    elif topics:
-        topic_codes.append(str(topics))
+    for key in ("topic", "topics", "topicId", "topicIdentifier"):
+        v = x.get(key)
+        if not v:
+            continue
+        if isinstance(v, list):
+            topic_codes.extend(str(t) for t in v if t)
+        else:
+            topic_codes.append(str(v))
     cid = x.get("callIdentifier")
     if cid:
         topic_codes.append(str(cid))
+    # deduplicate
+    seen: set[str] = set()
+    topic_codes = [t for t in topic_codes if not (t in seen or seen.add(t))]
 
     return {
         "id": f"euftop:{uid}",

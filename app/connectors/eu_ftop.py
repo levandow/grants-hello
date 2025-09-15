@@ -34,10 +34,27 @@ def _payload(page: int, size: int) -> Dict[str, Any]:
 
 def fetch(page_size: int = 50, max_pages: int = 10) -> Iterable[Dict[str, Any]]:
     for page in range(1, max_pages + 1):
-        r = requests.post(f"{API}?apiKey={API_KEY}&text={api_text}", json=_payload(page, page_size), timeout=40)
+        r = requests.post(
+            f"{API}?apiKey={API_KEY}&text={api_text}",
+            json=_payload(page, page_size),
+            timeout=40,
+        )
         r.raise_for_status()
         data = r.json()
-        items = (data.get("results") or []) if isinstance(data, dict) else []
+
+        items: list[Any] = []
+        if isinstance(data, dict):
+            if isinstance(data.get("results"), list):
+                items = data["results"]
+            else:
+                # Some responses wrap the actual hits inside ``resultList``
+                rl = data.get("resultList")
+                if isinstance(rl, dict):
+                    if isinstance(rl.get("results"), list):
+                        items = rl["results"]
+                    elif isinstance(rl.get("result"), list):
+                        items = rl["result"]
+
         if not items:
             break
         for rec in items:
