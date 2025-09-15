@@ -26,8 +26,9 @@ def _payload(page: int, size: int) -> Dict[str, Any]:
         "sort": [SORT],
         "pageNumber": page,
         "pageSize": size,
-        "fields": ["id","title","titleRaw","status","frameworkProgramme","openingDate","deadlineDate","callIdentifier","programme","topic","url"],
         "languages": ["en"],
+        # Request all available fields to capture full metadata
+        "fields": ["*"],
     }
 
 def fetch(page_size: int = 50, max_pages: int = 10) -> Iterable[Dict[str, Any]]:

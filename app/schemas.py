@@ -22,6 +22,7 @@ class OpportunityIn(BaseModel):
     summary: LocalizedText
     programme: Optional[str] = None
     sponsor: Optional[str] = None
+    topic_codes: List[str] = Field(default_factory=list)
     tags: List[str] = Field(default_factory=list)
     deadlines: List[Deadline] = Field(default_factory=list)
     status: str
@@ -44,6 +45,7 @@ class OpportunityOut(BaseModel):
     summary: LocalizedText
     programme: Optional[str] = None
     sponsor: Optional[str] = None
+    topic_codes: List[str] = Field(default_factory=list)
     tags: List[str] = Field(default_factory=list)
     deadlines: List[Deadline] = Field(default_factory=list)
     status: str
