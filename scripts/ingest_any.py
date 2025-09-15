@@ -43,6 +43,9 @@ def main():
     for rec in vinnova_rounds_fetch():
         upsert(normalize_vinnova_round(rec))
 
+    for rec in ftop_fetch():
+        upsert(normalize_ftop(rec))
+
 
 
 if __name__ == "__main__":
