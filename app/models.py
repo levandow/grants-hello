@@ -19,6 +19,9 @@ class Opportunity(Base):
     programme: Mapped[Optional[str]] = mapped_column(String(200))
     sponsor: Mapped[Optional[str]] = mapped_column(String(200))
 
+    # Topic or call identifiers (e.g. EU FTOP topic codes)
+    topic_codes: Mapped[List[str]] = mapped_column(JSON, default=list)
+
     # JSON arrays
     tags: Mapped[List[str]] = mapped_column(JSON, default=list)
     deadlines: Mapped[List[dict]] = mapped_column(JSON, default=list)

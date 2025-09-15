@@ -17,3 +17,4 @@ def test_normalize_minimal():
     assert n["status"] == "planned"
     assert n["deadlines"][0]["date"] == "2025-12-01"
     assert set(n["title"].keys()) == {"sv","en"}
+    assert n["topic_codes"] == []

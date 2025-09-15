@@ -33,6 +33,15 @@ def normalize(record: Dict[str, Any]) -> Dict[str, Any]:
     out["summary"].setdefault("sv", None)
     out["summary"].setdefault("en", None)
 
+    # Topic codes array
+    codes = out.get("topic_codes")
+    if isinstance(codes, list):
+        out["topic_codes"] = [str(c).strip() for c in codes if c]
+    elif codes:
+        out["topic_codes"] = [str(codes).strip()]
+    else:
+        out["topic_codes"] = []
+
     # Dates
     out["opens_at"]  = _iso_date(out.get("opens_at"))
     out["closes_at"] = _iso_date(out.get("closes_at"))
@@ -219,6 +228,7 @@ def normalize_vinnova(u: dict) -> dict:
         "summary": {"sv": summary_sv, "en": summary_en},
         "programme": programme,
         "sponsor": "Vinnova",
+        "topic_codes": [],
         "tags": tags,
         "deadlines": deadlines,
         "status": status,
@@ -349,6 +359,7 @@ def normalize_vinnova_round(r: dict) -> dict:
         "summary": {"sv": summary_sv, "en": summary_en},
         "programme": programme,
         "sponsor": "Vinnova",
+        "topic_codes": [],
         "tags": tags,
         "deadlines": deadlines,
         "status": status,
@@ -361,13 +372,52 @@ def normalize_vinnova_round(r: dict) -> dict:
 
 def normalize_ftop(x: dict) -> dict:
     uid = str(x.get("id") or x.get("callIdentifier") or "")
+
+    # Titles and summaries may come as dicts with language keys or plain strings
     title = x.get("title") or {}
-    title_en = title.get("en") if isinstance(title, dict) else (title or None)
-    # Some fields may be nested or strings; be permissive.
-    summary_en = None
-    opens = (x.get("openingDate") or "")[:10] or None
-    closes = (x.get("deadlineDate") or "")[:10] or None
-    link = x.get("url") or None
+    if isinstance(title, dict):
+        title_en = title.get("en") or next(iter(title.values()), None)
+    else:
+        title_en = str(title) if title else None
+
+    summary = x.get("summary") or x.get("objective") or x.get("objectiveText") or {}
+    if isinstance(summary, dict):
+        summary_en = summary.get("en") or next(iter(summary.values()), None)
+    else:
+        summary_en = str(summary) if summary else None
+
+    programme = None
+    prog = x.get("programme") or x.get("program")
+    if isinstance(prog, list):
+        programme = prog[0]
+    elif prog:
+        programme = prog
+
+    opens = _iso_or_none(x.get("openingDate"))
+    closes = _iso_or_none(x.get("deadlineDate"))
+
+    deadlines: List[Dict[str, Any]] = []
+    for d in x.get("deadlineDates") or []:
+        dt = _iso_or_none(d.get("date") if isinstance(d, dict) else d)
+        if dt:
+            deadlines.append({"type": "single", "date": dt})
+    if not deadlines and closes:
+        deadlines.append({"type": "single", "date": closes})
+
+    status_map = {"31094502": "open", "31094505": "closed", "31094501": "planned"}
+    status = status_map.get(str(x.get("status")), "open")
+
+    link = x.get("url") or x.get("topicUrl") or x.get("link") or ""
+
+    topic_codes: List[str] = []
+    topics = x.get("topic") or x.get("topics")
+    if isinstance(topics, list):
+        topic_codes.extend(str(t) for t in topics if t)
+    elif topics:
+        topic_codes.append(str(topics))
+    cid = x.get("callIdentifier")
+    if cid:
+        topic_codes.append(str(cid))
 
     return {
         "id": f"euftop:{uid}",
@@ -375,11 +425,12 @@ def normalize_ftop(x: dict) -> dict:
         "source_uid": uid,
         "title": {"en": title_en, "sv": None},
         "summary": {"en": summary_en, "sv": None},
-        "programme": None,
+        "programme": programme,
         "sponsor": "European Commission",
+        "topic_codes": topic_codes,
         "tags": ["eu", "horizon-europe"],
-        "deadlines": [{"type": "single", "date": closes}] if closes else [],
-        "status": "open",  # API filter already constrained to OPEN
+        "deadlines": deadlines,
+        "status": status,
         "links": {"landing": link},
         "opens_at": opens,
         "closes_at": closes,
