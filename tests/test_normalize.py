@@ -28,3 +28,16 @@ def test_ftop_uid_fallback():
     # Ensure overall normalize accepts it
     normalized = normalize(n)
     assert normalized["source_uid"] == n["source_uid"]
+
+
+def test_ftop_extra_fields():
+    rec = {
+        "title": "Extra",
+        "topicConditions": "Conditions text",
+        "supportInfo": "Support text",
+        "budgetOverview": "Budget text",
+    }
+    n = normalize_ftop(rec)
+    assert n["topic_conditions"] == "Conditions text"
+    assert n["support_info"] == "Support text"
+    assert n["budget_overview"] == "Budget text"

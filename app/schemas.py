@@ -31,7 +31,7 @@ class OpportunityIn(BaseModel):
     closes_at: Optional[str] = None
     notes: Optional[str] = None
 
-    model_config = ConfigDict(extra="ignore")  # ignore any unexpected top-level props
+    model_config = ConfigDict(extra="allow")  # accept and preserve unknown fields
 
 class Deadline(BaseModel):
     type: str
@@ -54,6 +54,7 @@ class OpportunityOut(BaseModel):
     closes_at: Optional[date] = None
     notes: Optional[str] = None
 
+    model_config = ConfigDict(extra="allow")
 
 class Facets(BaseModel):
     sponsors: List[str] = Field(default_factory=list)
