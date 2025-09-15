@@ -5,6 +5,7 @@ from typing import Iterable, Dict, Any
 
 API = "https://api.tech.ec.europa.eu/search-api/prod/rest/search"
 API_KEY = "SEDIA"
+api_text = "***"
 
 # Filters: open grant calls under Horizon Europe (43108390), status OPEN (31094502)
 # See examples in public threads and EC pages; adjust as needed.
@@ -33,7 +34,7 @@ def _payload(page: int, size: int) -> Dict[str, Any]:
 
 def fetch(page_size: int = 50, max_pages: int = 10) -> Iterable[Dict[str, Any]]:
     for page in range(1, max_pages + 1):
-        r = requests.post(f"{API}?apiKey={API_KEY}", json=_payload(page, page_size), timeout=40)
+        r = requests.post(f"{API}?apiKey={API_KEY}&text={api_text}", json=_payload(page, page_size), timeout=40)
         r.raise_for_status()
         data = r.json()
         items = (data.get("results") or []) if isinstance(data, dict) else []
