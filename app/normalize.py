@@ -1,519 +1,417 @@
-from datetime import datetime
-from typing import Dict, Any, List
-from jsonschema import validate, ValidationError
+# app/normalize.py
 import json
-from pathlib import Path
-from datetime import datetime, date
-from typing import Any, Dict, List, Optional
+import re
+from html.parser import HTMLParser
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional, Tuple
 
-# Load JSON Schema once
-_SCHEMA = json.loads(Path("packages/schema/opportunity.schema.json").read_text(encoding="utf-8"))
+# =========================
+# Shared helpers (stdlib)
+# =========================
 
-def _iso_date(s: str | None) -> str | None:
-    if not s:
-        return None
-    # Accept common formats; return YYYY-MM-DD
-    for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%d-%m-%Y", "%d/%m/%Y"):
-        try:
-            return datetime.strptime(s, fmt).strftime("%Y-%m-%d")
-        except ValueError:
-            continue
-    return s  # fallback untouched; schema will catch if invalid
+def _ensure_str(x: Optional[str]) -> str:
+    return x if isinstance(x, str) else ""
 
-def normalize(record: Dict[str, Any]) -> Dict[str, Any]:
-    """Normalize minimal fields: dates, title/summary dicts, status mapping."""
-    out = {**record}
+class _LinkExtractor(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.links: List[Tuple[str, str]] = []
+        self._in_a = False
+        self._href = ""
+        self._text_chunks: List[str] = []
 
-    # Ensure title/summary structure
-    out["title"] = out.get("title") or {}
-    out["title"].setdefault("sv", None)
-    out["title"].setdefault("en", None)
+    def handle_starttag(self, tag, attrs):
+        if tag.lower() == "a":
+            self._in_a = True
+            self._href = dict(attrs).get("href", "")
 
-    out["summary"] = out.get("summary") or {}
-    out["summary"].setdefault("sv", None)
-    out["summary"].setdefault("en", None)
+    def handle_endtag(self, tag):
+        if tag.lower() == "a" and self._in_a:
+            text = " ".join(self._text_chunks).strip()
+            self.links.append((self._href, text))
+            self._in_a = False
+            self._href = ""
+            self._text_chunks = []
 
-    # Topic codes array
-    codes = out.get("topic_codes")
-    if isinstance(codes, list):
-        out["topic_codes"] = [str(c).strip() for c in codes if c]
-    elif codes:
-        out["topic_codes"] = [str(codes).strip()]
-    else:
-        out["topic_codes"] = []
+    def handle_data(self, data):
+        if self._in_a:
+            self._text_chunks.append(data)
 
-    # Dates
-    out["opens_at"]  = _iso_date(out.get("opens_at"))
-    out["closes_at"] = _iso_date(out.get("closes_at"))
-    if isinstance(out.get("deadlines"), list):
-        norm_dl: List[Dict[str, Any]] = []
-        for d in out["deadlines"]:
-            nd = dict(d)
-            nd["date"] = _iso_date(d.get("date"))
-            norm_dl.append(nd)
-        out["deadlines"] = norm_dl
-
-    # Status mapping examples
-    status = (out.get("status") or "").lower().strip()
-    status_map = {
-        "forthcoming": "planned", "upcoming": "planned",
-        "open": "open", "active": "open",
-        "closed": "closed", "deadline passed": "closed"
-    }
-    out["status"] = status_map.get(status, status if status in {"open","planned","closed"} else "open")
-
-    # Minimal links
-    links = out.get("links") or {}
-    if "landing" not in links:
-        links["landing"] = ""
-    out["links"] = links
-
-    # Validate
+def _extract_links(html: Optional[str]) -> List[Dict[str, Optional[str]]]:
+    if not html:
+        return []
+    p = _LinkExtractor()
     try:
-        validate(out, _SCHEMA)
-    except ValidationError as e:
-        # Make validation errors readable during development
-        raise ValueError(f"Schema validation error at {list(e.path)}: {e.message}") from e
-
+        p.feed(html)
+    except Exception:
+        return []
+    seen = set()
+    out: List[Dict[str, Optional[str]]] = []
+    for href, text in p.links:
+        href = (href or "").strip()
+        text = (text or "").strip() or None
+        if not href:
+            continue
+        key = (href, text)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({"url": href, "label": text})
     return out
 
-# app/normalize.py (only the function below)
-
-def _iso_or_none(v: Optional[str]) -> Optional[str]:
-    if not v:
+def _strip_html(html: Optional[str]) -> Optional[str]:
+    if not html:
         return None
-    v = str(v).strip()
-    for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S.%fZ",
-                "%d-%m-%Y", "%d/%m/%Y"):
-        try:
-            return datetime.strptime(v[:19], fmt).strftime("%Y-%m-%d")
-        except ValueError:
-            continue
-    if v.isdigit() and len(v) == 8:
-        try:
-            return datetime.strptime(v, "%Y%m%d").strftime("%Y-%m-%d")
-        except ValueError:
-            pass
-    return None
+    text = re.sub(r"<[^>]+>", " ", html)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip() or None
 
-def _status_from_dates_or_year(opens_at: Optional[str], closes_at: Optional[str], dnr: str) -> str:
-    # 1) If dates exist → use them.
-    today = date.today()
-    if opens_at:
-        try:
-            if date.fromisoformat(opens_at) > today:
-                return "planned"
-        except Exception:
-            pass
-    if closes_at:
-        try:
-            return "closed" if date.fromisoformat(closes_at) < today else "open"
-        except Exception:
-            pass
-    # 2) No dates → infer from diary number year (e.g., "2014-04155").
-    try:
-        year = int((dnr or "")[:4])
-        if year < today.year:
-            return "closed"
-    except Exception:
-        pass
-    return "open"
+_DATE_FMTS = (
+    "%Y-%m-%dT%H:%M:%S",
+    "%Y-%m-%dT%H:%M",
+    "%Y-%m-%d",
+    "%d %B %Y",      # 19 January 2025
+    "%d %b %Y",      # 19 Jan 2025
+)
 
-def _extract_link(obj: Any) -> str:
-    if isinstance(obj, str):
-        return obj.strip()
-    if isinstance(obj, dict):
-        for k in ("URL", "Url", "url", "HRef", "href", "link", "fileURL", "FileURL"):
-            v = obj.get(k)
-            if isinstance(v, str) and v.strip():
-                return v.strip()
-    return ""
-
-def _clean_text(s: Optional[str]) -> Optional[str]:
+def _parse_date_maybe(s: Optional[str]) -> Optional[str]:
     if not s:
         return None
-    s2 = s.strip()
-    if not s2 or s2.lower() == "x":
+    s = s.strip()
+    s = re.sub(r"([+-]\d{2})(\d{2})$", r"\1:\2", s)  # +0000 -> +00:00
+    if re.match(r"^\d{4}-\d{2}-\d{2}", s):
+        return s[:10]
+    for fmt in _DATE_FMTS:
+        try:
+            return datetime.strptime(s, fmt).date().isoformat()
+        except ValueError:
+            continue
+    m = re.search(r"\b(\d{4}-\d{2}-\d{2})\b", s)
+    return m.group(1) if m else None
+
+def _compute_deadline_date(deadlines: List[Dict[str, Optional[str]]]) -> Optional[str]:
+    """Pick the next upcoming date; if none upcoming, return the latest past (for display)."""
+    today = datetime.now(timezone.utc).date()
+    parsed = []
+    for d in deadlines:
+        ds = d.get("date")
+        if not ds:
+            continue
+        try:
+            parsed.append(datetime.strptime(ds, "%Y-%m-%d").date())
+        except ValueError:
+            pass
+    if not parsed:
         return None
-    return s2
+    future = sorted([d for d in parsed if d >= today])
+    if future:
+        return future[0].isoformat()
+    return max(parsed).isoformat()
 
-def normalize_vinnova(u: dict) -> dict:
-    # IDs
-    dnr = (u.get("Diarienummer") or u.get("DiarienummerUtlysning") or "").strip()
-    uid = dnr or f"vno-{abs(hash((u.get('Titel') or u.get('TitelEngelska') or '').lower()))}"
+def _compute_status(opening_date: Optional[str], deadline_date: Optional[str]) -> str:
+    if not opening_date and not deadline_date:
+        return "unknown"
+    today = datetime.now(timezone.utc).date()
+    od = None
+    dd = None
+    if opening_date:
+        try:
+            od = datetime.strptime(opening_date, "%Y-%m-%d").date()
+        except ValueError:
+            pass
+    if deadline_date:
+        try:
+            dd = datetime.strptime(deadline_date, "%Y-%m-%d").date()
+        except ValueError:
+            pass
+    if od and today < od:
+        return "upcoming"
+    if dd and today <= dd:
+        return "open"
+    if dd and today > dd:
+        return "closed"
+    return "unknown"
 
-    # Titles
-    title_sv = _clean_text(u.get("Titel"))
-    title_en = _clean_text(u.get("TitelEngelska"))
-    if not title_en and title_sv:
-        title_en = title_sv  # fallback to Swedish
+_DOC_KEYWORDS = (
+    "call", "work programme", "work program", "guide", "guidance",
+    "template", "terms", "conditions", "instructions"
+)
 
-    # Summary: prefer first WebText paragraph; fallback to Beskrivning fields
+def _split_documents_vs_links(links: List[Dict[str, Optional[str]]]):
+    """PDFs or doc-like labels -> documents; others -> links."""
+    docs, other = [], []
+    for l in links:
+        url = (l.get("url") or "").strip()
+        label = (l.get("label") or "").strip()
+        lower = f"{label} {url}".lower()
+        is_pdf = url.lower().endswith(".pdf")
+        is_doc_like = is_pdf or any(k in lower for k in _DOC_KEYWORDS)
+        doc_item = {
+            "title": label or None, "description": None, "url": url, "lang": None,
+            "primary": None, "filename": None, "external_id": None
+        }
+        if is_doc_like:
+            docs.append(doc_item)
+        else:
+            other.append({"label": label or None, "url": url})
+    # de-dup by URL
+    def dedupe(lst, key):
+        seen = set(); out = []
+        for x in lst:
+            k = x.get(key)
+            if k and k not in seen:
+                seen.add(k); out.append(x)
+        return out
+    return dedupe(docs, "url"), dedupe(other, "url")
+
+def _first(x):
+    return x[0] if isinstance(x, list) and x else None
+
+# =========================
+# VINNOVA normalizer
+# =========================
+
+def normalize_vinnova(rec: Dict[str, Any]) -> Dict[str, Any]:
+    # Titles & descriptions (prefer English, fallback Swedish)
+    title_sv = rec.get("Titel")
+    title_en = rec.get("TitelEngelska")
+    desc_html = rec.get("BeskrivningEngelska") or rec.get("Beskrivning")
+    desc_text = _strip_html(desc_html)
+
+    # Multilingual title/summary dicts
+    title_dict = {"sv": title_sv, "en": title_en}
+
     summary_sv = None
     summary_en = None
-    webtexts = u.get("WebTextLista") or []
-    if isinstance(webtexts, list) and webtexts:
-        w0 = webtexts[0] or {}
-        summary_sv = _clean_text(w0.get("TextSv")) or _clean_text(u.get("Beskrivning"))
-        summary_en = _clean_text(w0.get("TextEn")) or _clean_text(u.get("BeskrivningEngelska"))
-    else:
-        summary_sv = _clean_text(u.get("Beskrivning"))
-        summary_en = _clean_text(u.get("BeskrivningEngelska")) or summary_sv
-
-    # Programme: infer Innovair if in title
-    programme = None
-    tblob = " ".join([t for t in [title_sv or "", title_en or ""]])
-    if "innovair" in tblob.lower():
-        programme = "Innovair"
-
-    # Links
-    links: Dict[str, str] = {}
-    # 1) LankLista → landing
-    for item in (u.get("LankLista") or []):
-        url = _extract_link(item)
-        if url:
-            links["landing"] = url
-            break
-    # 2) Primary document → guidelines
-    for doc in (u.get("DokumentLista") or []):
-        if doc.get("Primary"):
-            links["guidelines"] = doc.get("fileURL") or _extract_link(doc) or ""
-            break
-    # 3) If still no landing, fall back to guidelines (so there is always a click target)
-    if not links.get("landing"):
-        links["landing"] = links.get("guidelines", "") or ""
-    # Ensure string
-    links["landing"] = links.get("landing", "") or ""
+    for w in (rec.get("WebTextLista") or []):
+        if not summary_en and w.get("TextEn"):
+            summary_en = w["TextEn"]
+        if not summary_sv and w.get("TextSv"):
+            summary_sv = w["TextSv"]
+    if not summary_sv and desc_text:
+        summary_sv = desc_text[:400]
+    if not summary_en and desc_text:
+        summary_en = desc_text[:400]
+    summary_dict = {"sv": summary_sv, "en": summary_en}
 
     # Dates
-    opens_at  = _iso_or_none(u.get("Oppningsdatum") or u.get("Öppningsdatum") or u.get("OpeningDate"))
-    closes_at = _iso_or_none(u.get("Stangningsdatum") or u.get("Stängningsdatum") or u.get("ClosingDate"))
+    opening_date = _parse_date_maybe(rec.get("Oppningsdatum"))
+    closing = _parse_date_maybe(rec.get("Stangningsdatum"))
+    deadlines = [{"type": "single", "date": d} for d in [closing] if d]  # API requires 'type'
 
-    deadlines: List[Dict[str, Any]] = []
-    if closes_at:
-        deadlines.append({"type": "single", "date": closes_at})
+    # Documents (already structured)
+    documents = []
+    for d in (rec.get("DokumentLista") or []):
+        documents.append({
+            "title": d.get("Titel"),
+            "description": d.get("Beskrivning"),
+            "url": d.get("fileURL"),
+            "lang": d.get("Lang"),
+            "primary": bool(d.get("Primary")) if d.get("Primary") is not None else None,
+            "filename": d.get("FileName"),
+            "external_id": d.get("DokumentID"),
+        })
 
-    # Status (dates or diary-year fallback)
-    status = _status_from_dates_or_year(opens_at, closes_at, dnr)
+    # Links (structured) → plus classify doc-like links into documents
+    links_list = []
+    for l in (rec.get("LankLista") or []):
+        links_list.append({"label": l.get("Beskrivning") or None, "url": l.get("URL") or ""})
+    doclike_from_links, links_list = _split_documents_vs_links(links_list)
+    documents = doclike_from_links + documents
 
-    # Tags
-    tags = ["sweden", "public-funder"]
-    text_blob = " ".join(filter(None, [title_sv, title_en, summary_sv, summary_en])).lower()
-    if any(k in text_blob for k in ("flyg", "aero", "air", "aviation")):
-        tags.append("aviation")
-    if any(k in text_blob for k in ("smf", "sme")):
-        tags.append("sme")
+    # Apply URL heuristic
+    apply_url = None
+    for l in links_list:
+        if (l.get("label") or "").lower().find("ansök") >= 0:
+            apply_url = l.get("url"); break
 
-    # Contacts → notes (dev-friendly; schema has no contacts field)
-    notes = None
-    contacts = u.get("KontaktLista") or []
-    if contacts:
-        lines = []
-        for c in contacts[:6]:
-            nm = (c.get("Namn") or "").strip()
-            em = (c.get("Epost") or "").strip()
-            tel = (c.get("Telefon") or "").strip()
-            rl = (c.get("Roll") or "").strip()
-            line = " / ".join([s for s in (nm, em, tel, rl) if s])
-            if line:
-                lines.append(line)
-        if lines:
-            notes = "Contacts:\n- " + "\n- ".join(lines)
+    # Links object required by API (strings, not null)
+    landing = links_list[0]["url"] if links_list else (rec.get("Webbsida") or apply_url)
+    landing = _ensure_str(landing)
+    apply_url = _ensure_str(apply_url or landing)
+    links_obj = {"landing": landing, "apply": apply_url}
+
+    # Contacts
+    contacts = []
+    for c in (rec.get("KontaktLista") or []):
+        contacts.append({
+            "name": c.get("Namn"),
+            "email": c.get("Epost"),
+            "phone": c.get("Telefon"),
+            "role": c.get("Roll"),
+            "external_id": c.get("KontaktID"),
+        })
+
+    language = ["en"] if (title_en or rec.get("BeskrivningEngelska")) else ["sv"]
+
+    # Required IDs
+    source_uid = rec.get("Diarienummer") or (rec.get("DiarienummerUtlysning") or _ensure_str(title_en or title_sv) or "unknown")
+    deadline_date = _compute_deadline_date(deadlines) if deadlines else None
+    status = _compute_status(opening_date, deadline_date)
 
     return {
-        "id": f"vinnova:{uid}",
-        "source": "vinnova",
-        "source_uid": uid,
-        "title":   {"sv": title_sv,   "en": title_en},
-        "summary": {"sv": summary_sv, "en": summary_en},
-        "programme": programme,
-        "sponsor": "Vinnova",
-        "topic_codes": [],
-        "tags": tags,
-        "deadlines": deadlines,
+        "id": f"VINNOVA:{source_uid}",
+        "source_uid": source_uid,
+        "source": "VINNOVA",
+        "source_id": source_uid,  # optional duplicate; harmless
+        "call_identifier": rec.get("DiarienummerUtlysning"),
+        "title": title_dict,                      # dict per API
+        "summary": summary_dict,                  # dict per API
+        "description_html": desc_html,
+        "description_text": desc_text,
+        "language": language,
+        "programme": None,
+        "opening_date": opening_date,
+        "deadline_date": deadline_date,
+        "deadlines": deadlines,                   # with 'type'
         "status": status,
-        "links": links,
-        "opens_at": opens_at,
-        "closes_at": closes_at,
-        "notes": notes,
+        "country": "SE",
+        "apply_url": apply_url,
+        "documents": documents,
+        "contacts": contacts,
+        "links": links_obj,                       # dict of strings
+        "budget_total": None,
+        "currency": None,
+        "extra_json": rec,
     }
 
-def normalize_vinnova_round(r: dict) -> dict:
+# =========================
+# EU normalizer
+# =========================
+
+def normalize_eu(result: Dict[str, Any]) -> Dict[str, Any]:
+    meta = result.get("metadata") or {}
+
+    # Title & descriptions
+    title = _first(meta.get("title")) or result.get("summary") or _first(result.get("title"))
+    desc_html = _first(meta.get("descriptionByte")) or _first(meta.get("destinationDetails")) or None
+    desc_text = _strip_html(desc_html)
+    summary = result.get("summary") or (desc_text[:400] if desc_text else None)
+
+    # Multilingual dicts (EU content typically English)
+    title_dict = {"en": title}
+    summary_dict = {"en": summary}
+
+    # Dates from actions (stringified JSON) + fallbacks
+    opening_date = None
+    raw_deadlines: List[str] = []
+    status = "unknown"
+
+    actions_raw = _first(meta.get("actions"))
+    if actions_raw:
+        try:
+            actions = json.loads(actions_raw)
+            if isinstance(actions, list) and actions:
+                a0 = actions[0]
+                opening_date = _parse_date_maybe(a0.get("plannedOpeningDate"))
+                for d in (a0.get("deadlineDates") or []):
+                    pd = _parse_date_maybe(d)
+                    if pd:
+                        raw_deadlines.append(pd)
+                st = (a0.get("status") or {}).get("abbreviation")
+                if isinstance(st, str) and st:
+                    status = st.lower()
+        except Exception:
+            pass
+
+    if not opening_date:
+        opening_date = _parse_date_maybe(_first(meta.get("startDate")))
+    if not raw_deadlines:
+        dl = _parse_date_maybe(_first(meta.get("deadlineDate")))
+        if dl:
+            raw_deadlines.append(dl)
+
+    deadlines = [{"type": "single", "date": d} for d in raw_deadlines]  # API requires 'type'
+    deadline_date = _compute_deadline_date(deadlines) if deadlines else None
+    if status == "unknown":
+        status = _compute_status(opening_date, deadline_date)
+
+    # Collect links: root urls + links from HTML blobs
+    links_list: List[Dict[str, Optional[str]]] = []
+    for u in (result.get("url") or []):
+        links_list.append({"label": None, "url": u})
+    for html_key in ("descriptionByte", "destinationDetails", "topicConditions", "supportInfo"):
+        for html_str in (meta.get(html_key) or []):
+            links_list.extend(_extract_links(html_str))
+
+    documents, links_list = _split_documents_vs_links(links_list)
+
+    # Landing/apply links (must be strings)
+    landing = _first(meta.get("esST_URL")) or (links_list[0]["url"] if links_list else _first(result.get("url")))
+    landing = _ensure_str(landing)
+    apply_url = _ensure_str(landing)  # portal is the entry point; can refine later
+    links_obj = {"landing": landing, "apply": apply_url}
+
+    # Programme & identifiers
+    programme = _first(meta.get("callTitle"))
+    call_identifier = _first(meta.get("callIdentifier"))
+    source_uid = _first(meta.get("identifier")) or result.get("reference") or _ensure_str(title) or "unknown"
+
+    # Keywords/tags kept for enrichment (harmless if API ignores)
+    keywords = (meta.get("keywords") or []) + (meta.get("tags") or [])
+
+    return {
+        "id": f"EU:{source_uid}",
+        "source_uid": source_uid,
+        "source": "EU",
+        "source_id": source_uid,          # optional duplicate
+        "call_identifier": call_identifier,
+        "title": title_dict,              # dict per API
+        "summary": summary_dict,          # dict per API
+        "description_html": desc_html,
+        "description_text": desc_text,
+        "language": meta.get("language") or ([result.get("language")] if result.get("language") else ["en"]),
+        "programme": programme,
+        "opening_date": opening_date,
+        "deadline_date": deadline_date,
+        "deadlines": deadlines,           # with 'type'
+        "status": status,
+        "country": None,
+        "apply_url": apply_url,
+        "documents": documents,
+        "contacts": [],                   # parse mailto: later if needed
+        "links": links_obj,               # dict of strings
+        "budget_total": None,
+        "currency": None,
+        "extra_json": result,
+        "keywords": keywords,
+    }
+
+# =========================
+# Unified dispatcher
+# =========================
+
+def normalize(record: Dict[str, Any], source: Optional[str] = None) -> Dict[str, Any]:
     """
-    Normalize an Ansökningsomgång (application round) record into the unified schema.
-    Fields in the feed often include:
-      - AnsokningsomgangDnr or Diarienummer  (unique id for the round)
-      - Titel / TitelEngelska
-      - Oppningsdatum / Stangningsdatum (open/close)
-      - LankLista (list of links; objects with URL/Beskrivning)
-      - DokumentLista (files; fileURL or DokumentID)
-      - WebTextLista (TextSv/TextEn paragraphs)
-      - Sponsor/program info may be implicit (Vinnova / programme name in title)
+    Normalize one record from either VINNOVA or EU.
+
+    - If the record already matches the API (has 'id', 'source_uid', and 'links' is a dict),
+      it's returned as-is (pass-through).
+    - Pass source="VINNOVA" or source="EU" for explicit routing; otherwise we auto-detect.
     """
-    def _get(*names):
-        for n in names:
-            if n in r and r[n] not in (None, ""):
-                return r[n]
-        return None
+    # Pass-through for already-normalized payloads
+    if (
+        isinstance(record, dict)
+        and "id" in record
+        and "source_uid" in record
+        and isinstance(record.get("links"), dict)
+    ):
+        return record
 
-    def _extract_link(obj):
-        if isinstance(obj, str):
-            return obj.strip()
-        if isinstance(obj, dict):
-            for k in ("URL","Url","url","HRef","href","link"):
-                v = obj.get(k)
-                if isinstance(v, str) and v.strip():
-                    return v.strip()
-        return ""
+    src = (source or "").upper()
+    if src == "VINNOVA":
+        return normalize_vinnova(record)
+    if src == "EU":
+        return normalize_eu(record)
 
-    def _doc_url(d: dict) -> str:
-        url = (d.get("fileURL") or d.get("URL") or "").strip() if isinstance(d, dict) else ""
-        if url:
-            return url
-        did = (d.get("DokumentID") or "").strip() if isinstance(d, dict) else ""
-        return f"https://data.vinnova.se/api/file/{did}" if did else ""
+    # Auto-detect based on shape
+    if any(k in record for k in ("Diarienummer", "Titel", "Beskrivning", "LankLista", "DokumentLista")):
+        return normalize_vinnova(record)
+    if isinstance(record.get("metadata"), dict):
+        return normalize_eu(record)
 
-    # IDs
-    dnr = (_get("AnsokningsomgangDnr", "Diarienummer", "Dnr") or "").strip()
-    uid = dnr or f"vno-round-{abs(hash((_get('Titel','TitelEngelska') or '').lower()))}"
-
-    # Titles
-    title_sv = (_get("Titel") or "").strip() or None
-    title_en = (_get("TitelEngelska") or "").strip() or None
-
-    # Summary (prefer first web paragraph)
-    summary_sv = None; summary_en = None
-    w = r.get("WebTextLista") or []
-    if isinstance(w, list) and w:
-        summary_sv = (w[0].get("TextSv") or "").strip() or None
-        summary_en = (w[0].get("TextEn") or "").strip() or None
-    if not summary_sv:
-        summary_sv = (_get("Beskrivning", "Sammanfattning") or "").strip() or None
-    if not summary_en:
-        summary_en = (_get("BeskrivningEngelska", "SummaryEnglish") or "").strip() or None
-
-    # Programme (heuristic from title)
-    programme = "Innovair" if (title_sv or title_en or "").lower().__contains__("innovair") else None
-
-    # Links
-    links = {}
-    # landing: first link in LankLista if present
-    for item in (r.get("LankLista") or []):
-        url = _extract_link(item)
-        if url:
-            links["landing"] = url
-            break
-    # guidelines: primary document
-    primary = None
-    for d in (r.get("DokumentLista") or []):
-        if isinstance(d, dict) and d.get("Primary"):
-            primary = d; break
-    if primary:
-        links["guidelines"] = _doc_url(primary)
-    # if no landing at all, fall back to any doc
-    if not links.get("landing"):
-        for d in (r.get("DokumentLista") or []):
-            url = _doc_url(d)
-            if url:
-                links["landing"] = url
-                links.setdefault("guidelines", url)
-                break
-    links["landing"] = links.get("landing", "") or ""
-
-    # Dates
-    opens_at  = _iso_or_none(_get("Oppningsdatum", "Öppningsdatum", "OpeningDate"))
-    closes_at = _iso_or_none(_get("Stangningsdatum", "Stängningsdatum", "ClosingDate"))
-
-    deadlines = []
-    if closes_at:
-        deadlines.append({"type": "single", "date": closes_at})
-
-    # Status
-    status = _status_from_dates_or_year(opens_at, closes_at, dnr or "")
-
-    # Tags (light)
-    tags = ["sweden", "public-funder"]
-    text_blob = " ".join(filter(None, [title_sv, title_en, summary_sv, summary_en])).lower()
-    if any(k in text_blob for k in ("flyg", "aero", "air", "aviation")): tags.append("aviation")
-    if any(k in text_blob for k in ("smf", "sme")): tags.append("sme")
-
-    # Notes (optional: contacts etc., if present on rounds)
-    notes = None
-    contacts = r.get("KontaktLista") or []
-    if contacts:
-        lines = []
-        for c in contacts[:6]:
-            nm = (c.get("Namn") or "").strip()
-            em = (c.get("Epost") or "").strip()
-            tel = (c.get("Telefon") or "").strip()
-            rl = (c.get("Roll") or "").strip()
-            line = " / ".join([s for s in (nm, em, tel, rl) if s])
-            if line: lines.append(line)
-        if lines: notes = "Contacts:\n- " + "\n- ".join(lines)
-
-    return {
-        "id": f"vinnova_round:{uid}",
-        "source": "vinnova_rounds",
-        "source_uid": uid,
-        "title":   {"sv": title_sv,   "en": title_en},
-        "summary": {"sv": summary_sv, "en": summary_en},
-        "programme": programme,
-        "sponsor": "Vinnova",
-        "topic_codes": [],
-        "tags": tags,
-        "deadlines": deadlines,
-        "status": status,
-        "links": links,
-        "opens_at": opens_at,
-        "closes_at": closes_at,
-        "notes": notes,
-    }
-
-
-def normalize_ftop(x: dict) -> dict:
-    def _pick_text(obj: Any, lang: str = "en") -> str | None:
-        """Return first non-empty text from nested structures."""
-        if not obj:
-            return None
-        if isinstance(obj, str):
-            s = obj.strip()
-            return s or None
-        if isinstance(obj, list):
-            for item in obj:
-                v = _pick_text(item, lang)
-                if v:
-                    return v
-            return None
-        if isinstance(obj, dict):
-            if lang in obj and obj[lang]:
-                return _pick_text(obj[lang], lang)
-            for key in ("value", "text", "label", "title", "default", "defaultValue"):
-                v = obj.get(key)
-                if isinstance(v, str) and v.strip():
-                    return v.strip()
-            for v in obj.values():
-                if isinstance(v, str) and v.strip():
-                    return v.strip()
-                if isinstance(v, (dict, list)):
-                    vv = _pick_text(v, lang)
-                    if vv:
-                        return vv
-        return None
-
-    def _pick_date(v: Any) -> str | None:
-        if isinstance(v, dict):
-            for key in ("date", "value", "startDate", "endDate"):
-                if v.get(key):
-                    return _iso_or_none(v.get(key))
-        return _iso_or_none(v)
-
-    title_en = _pick_text(x.get("title"))
-    summary_en = _pick_text(
-        x.get("summary")
-        or x.get("objective")
-        or x.get("objectiveText")
-        or x.get("description")
-    )
-
-    programme = _pick_text(x.get("programme") or x.get("program"))
-
-    opens = _pick_date(x.get("openingDate"))
-    closes = _pick_date(x.get("deadlineDate"))
-
-    # Additional descriptive fields that may be useful for clients
-    topic_conditions = _pick_text(
-        x.get("topicConditions") or x.get("topicCondition")
-    )
-    support_info = _pick_text(
-        x.get("supportInfo") or x.get("support") or x.get("supplementaryInformation")
-    )
-    budget_overview = _pick_text(
-        x.get("budgetOverview") or x.get("budget") or x.get("budgetSummary")
-    )
-
-    uid = str(x.get("id") or x.get("callIdentifier") or "").strip()
-    if not uid:
-        fallback = title_en or summary_en or ""
-        if fallback:
-            uid = f"ftop-{abs(hash(fallback.lower()))}"
-        else:
-            uid = f"ftop-{abs(hash(json.dumps(x, sort_keys=True)))}"
-
-    deadlines: List[Dict[str, Any]] = []
-    for d in x.get("deadlineDates") or x.get("deadlines") or []:
-        dt = _pick_date(d.get("date") if isinstance(d, dict) else d)
-        if dt:
-            deadlines.append({"type": "single", "date": dt})
-    if not deadlines and closes:
-        deadlines.append({"type": "single", "date": closes})
-
-    status_raw = x.get("status")
-    if isinstance(status_raw, dict):
-        status_raw = (
-            status_raw.get("id")
-            or status_raw.get("code")
-            or status_raw.get("value")
-            or status_raw.get("label")
-        )
-    status_map = {
-        "31094502": "open",
-        "31094505": "closed",
-        "31094501": "planned",
-        "open": "open",
-        "closed": "closed",
-        "planned": "planned",
-    }
-    status = status_map.get(str(status_raw).strip().lower(), "open")
-
-    link = ""
-    for key in ("url", "topicUrl", "topicURL", "link", "links"):
-        v = x.get(key)
-        if not v:
-            continue
-        if isinstance(v, list):
-            for item in v:
-                link = _extract_link(item)
-                if link:
-                    break
-        else:
-            link = _extract_link(v)
-        if link:
-            break
-
-    topic_codes: List[str] = []
-    for key in ("topic", "topics", "topicId", "topicIdentifier"):
-        v = x.get(key)
-        if not v:
-            continue
-        if isinstance(v, list):
-            topic_codes.extend(str(t) for t in v if t)
-        else:
-            topic_codes.append(str(v))
-    cid = x.get("callIdentifier")
-    if cid:
-        topic_codes.append(str(cid))
-    # deduplicate
-    seen: set[str] = set()
-    topic_codes = [t for t in topic_codes if not (t in seen or seen.add(t))]
-
-    return {
-        "id": f"euftop:{uid}",
-        "source": "eu_ftop",
-        "source_uid": uid,
-        "title": {"en": title_en, "sv": None},
-        "summary": {"en": summary_en, "sv": None},
-        "programme": programme,
-        "sponsor": "European Commission",
-        "topic_codes": topic_codes,
-        "tags": ["eu", "horizon-europe"],
-        "deadlines": deadlines,
-        "status": status,
-        "links": {"landing": link},
-        "opens_at": opens,
-        "closes_at": closes,
-        "notes": None,
-        # pass through extra informative fields
-        "topic_conditions": topic_conditions,
-        "support_info": support_info,
-        "budget_overview": budget_overview,
-    }
+    # Fallback: try EU then Vinnova
+    try:
+        return normalize_eu(record)
+    except Exception:
+        return normalize_vinnova(record)

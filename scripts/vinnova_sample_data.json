@@ -1,0 +1,197 @@
+[
+        {
+        "Diarienummer": "2025-01768",
+        "DiarienummerUtlysning": "2025-01767",
+        "Titel": "Impact Innovation: Digitala produktpass - Swedish Metals and Minerals",
+        "Beskrivning": "Den här utlysningen genomförs inom ramen för programmet Swedish Metals & Minerals, en del av Impact Innovation – ett initiativ av Energimyndigheten, Formas och Vinnova. \n\nUtlysningen gäller genomförande av en strategisk insats i syfte att förbereda och underlätta ett effektivt införande av digitala produktpass längs den svenska metallindustrins värdekedja. \n",
+        "TitelEngelska": "Impact Innovation: Digital product passports - Swedish Metals & Minerals",
+        "BeskrivningEngelska": "This call for proposals is being implemented within the framework of the Swedish Metals & Minerals program, part of Impact Innovation – an initiative of the Swedish Energy Agency, Formas and Vinnova. \n\nThe call for proposals concerns the implementation of a strategic effort in aim to prepare and facilitate the effective introduction of digital product passports along the Swedish metal industry value chain. \n",
+        "Oppningsdatum": "2025-09-16T00:00:00",
+        "Stangningsdatum": "2025-10-31T14:00:00",
+        "DagligAvlasning": 0,
+        "AvlasningstillfalleLista": [],
+        "UppskattatBeslutsdatum": "2025-11-20T00:00:00",
+        "TidigastProjektstart": null,
+        "SenastProjektstart": "2025-11-24T00:00:00",
+        "SenastProjektslut": "2028-12-31T00:00:00",
+        "DokumentLista": [
+            {
+                "Titel": "Utlysningstext Impact Innovation: Digitala produktpass inom Swedish Metals & Minerals",
+                "Beskrivning": "Utlysningstext Impact Innovation: Digitala produktpass inom Swedish Metals & Minerals 250912",
+                "FileName": "Impact Innovation_Digitala produktpass inom Swedish Metals & Minerals_250912(1446729).pdf",
+                "DokumentID": "2025-01768_2",
+                "fileURL": "https://data.vinnova.se/api/file/2025-01768_2",
+                "Lang": "Sv",
+                "Primary": true
+            },
+            {
+                "Titel": "Mall Projektbeskrivning - Digitala produkpass",
+                "Beskrivning": "Mall Projektbeskrivning - Digitala produkpass",
+                "FileName": "Mall Projektbeskrivning - Digitala produkpass(1446730).docx",
+                "DokumentID": "2025-01768_3",
+                "fileURL": "https://data.vinnova.se/api/file/2025-01768_3",
+                "Lang": "Sv",
+                "Primary": false
+            },
+            {
+                "Titel": "Mall CV-bilaga - Impact Innovation",
+                "Beskrivning": "Mall CV-bilaga - Impact Innovation",
+                "FileName": "Mall CV-bilaga - Impact Innovation(1446731).docx",
+                "DokumentID": "2025-01768_4",
+                "fileURL": "https://data.vinnova.se/api/file/2025-01768_4",
+                "Lang": "Sv",
+                "Primary": false
+            },
+            {
+                "Titel": "Mall Avsiktsförklaring - Impact Innovation",
+                "Beskrivning": "Mall Avsiktsförklaring - Impact Innovation",
+                "FileName": "Mall Avsiktsförklaring - Impact Innovation(1446732).docx",
+                "DokumentID": "2025-01768_5",
+                "fileURL": "https://data.vinnova.se/api/file/2025-01768_5",
+                "Lang": "Sv",
+                "Primary": false
+            },
+            {
+                "Titel": "Mall icke-konfidentiell projektbeskrivning till programkontoret - Digitala produktpass",
+                "Beskrivning": "Mall icke-konfidentiell projektbeskrivning till programkontoret - Digitala produktpass",
+                "FileName": "Mall icke-konfidentiell projektbeskrivning till programkontoret - Digitala produktpass(1446733).docx",
+                "DokumentID": "2025-01768_6",
+                "fileURL": "https://data.vinnova.se/api/file/2025-01768_6",
+                "Lang": "Sv",
+                "Primary": false
+            }
+        ],
+        "LankLista": [
+            {
+                "Beskrivning": "Ansök här",
+                "URL": "https://ansok.vinnova.se/utlysning/fd45ba1f-2ed4-47eb-fc3e-08ddf43b8878?opencall=true"
+            }
+        ],
+        "KontaktLista": [
+            {
+                "Namn": "Anders Marén",
+                "Telefon": "08-473 31 88",
+                "Epost": "anders.maren@vinnova.se",
+                "Roll": "Frågor om urvalsprocessen samt om juridiska krav och formella förutsättningar",
+                "KontaktID": 14494195
+            },
+            {
+                "Namn": "Helena Malmqvist",
+                "Telefon": "070-664 50 51",
+                "Epost": "programkontor@swedishmetalsandminerals.se",
+                "Roll": "Frågor om digitala produktpass",
+                "KontaktID": 14494196
+            },
+            {
+                "Namn": "Rasmus Östlund",
+                "Telefon": "08-679 17 24",
+                "Epost": "programkontor@swedishmetalsandminerals.se",
+                "Roll": "Frågor om Swedish Metals & Minerals",
+                "KontaktID": 14494197
+            }
+        ],
+        "Publik": 1,
+        "Webbsida": 1,
+        "AnnonseringslägeÅr": null,
+        "AnnonseringslägePeriod": null,
+        "Extern": 0,
+        "WebTextLista": [
+            {
+                "TextID": 1,
+                "TextSv": "Projekt med karaktär av experimentell utveckling som bidrar till att förbereda och underlätta ett effektivt införande av digitala produktpass hos aktörer i den svenska metallindustrins värdekedja.",
+                "TextEn": "Project with the character of experimental development that contributes to preparing and facilitating the effective introduction of digital product passports among actors in the Swedish metal industry´s value chain."
+            },
+            {
+                "TextID": 2,
+                "TextSv": "Konsortier med minst 10 projektparter. Ett konsortium bör innehålla minst två stålföretag, ett gruvföretag, ett aluminiumföretag eller gjuteri, en slutanvändare, ett SMF samt ett forskningsinstitut eller en akademisk forskningsorganisation.",
+                "TextEn": "Consortia with at least 10 project partners. The consortium should include at least two steel companies, one mining company, one aluminium company or foundry, one end-user, one SME and one research institute or academic research organisation."
+            },
+            {
+                "TextID": 3,
+                "TextSv": "Inom den strategiska insatsen kommer ett projekt att finansieras. Det maximala bidragsbeloppet är 10 miljoner kronor. Vinnovas bidrag får uppgå till maximalt 50 procent av projektets totala stödberättigande kostnad.",
+                "TextEn": "One project will be financed within the strategic initiative. The maximum grant amount is SEK 10 million. Vinnova´s funding may amount to a maximum of 50 percent of the project´s total eligible cost."
+            }
+        ]
+    },
+    {
+        "Diarienummer": "2025-03398",
+        "DiarienummerUtlysning": "2024-01495",
+        "Titel": "Impact Innovation: Omställningslabb inom Water Wise Societies 2025 för Hållbart vatten för alla - sluten",
+        "Beskrivning": "Nu ställer Water Wise Societies om Sverige – på väg mot missionen om hållbart vatten för alla 2050. I denna utlysning finansierar vi aktörer som i samverkan utforskar, testar och skalar upp nya idéer och lösningar i riktning mot missionen. Och som tillsammans även etablerar sig i ett omställningslabb som löser en geografisk eller tematisk utmaning kopplad till missionen. Ansökningar ska stödja ett eller flera av Water Wise Societies uppdrag. Se https://waterwisesocieties.se/delmal/ Water Wise Societies är ett program inom Impact Innovation, en gemensam satsning av Energimyndigheten, Formas och Vinnova. ",
+        "TitelEngelska": "Impact Innovation: Transition lab within Water Wise Societies 2025 for Sustainable Water for All - closed",
+        "BeskrivningEngelska": "Now Water Wise Societies is asking about Sweden – on the way to the mission of sustainable water for all by 2050. In this call for proposals we are funding actors who, in collaboration, explore, test and scale up new ideas and solutions towards the mission. And who together also establish themselves in a transition lab that solves a geographical or thematic challenge linked to the mission. Applications should support one or more of Water Wise Societies´s assignments. See https://waterwisesocieties.se/delmal/ Water Wise Societies is a programme within Impact Innovation, a joint effort by the Swedish Energy Agency, Formas and Vinnova.",
+        "Oppningsdatum": "2025-09-05T00:00:00",
+        "Stangningsdatum": "2025-09-05T14:00:00",
+        "DagligAvlasning": 0,
+        "AvlasningstillfalleLista": [],
+        "UppskattatBeslutsdatum": "2025-11-05T00:00:00",
+        "TidigastProjektstart": "2025-11-05T00:00:00",
+        "SenastProjektstart": "2025-11-30T00:00:00",
+        "SenastProjektslut": "2028-11-30T00:00:00",
+        "DokumentLista": [],
+        "LankLista": [],
+        "KontaktLista": [],
+        "Publik": 0,
+        "Webbsida": 0,
+        "AnnonseringslägeÅr": null,
+        "AnnonseringslägePeriod": null,
+        "Extern": 0,
+        "WebTextLista": []
+    },
+    {
+        "Diarienummer": "2025-03400",
+        "DiarienummerUtlysning": "2022-00050",
+        "Titel": "Transport- och mobilitetstjänster - FFI - våren 2026",
+        "Beskrivning": "Med det här erbjudandet vill vi stödja utveckling av innovations- och forskningsprojekt som bidrar till att effektivisera transport- och mobilitetslösningar för att möta samhällets utmaningar inom effektivitet, tillgänglighet och resiliens. Erbjudandet ingår i delprogrammet FFI Transport- och mobilitetstjänster inom samarbetet Fordonsstrategisk forskning och innovation (FFI).",
+        "TitelEngelska": "Transport and mobility services - FFI – spring 2026",
+        "BeskrivningEngelska": "With this the offer we want to support the development of innovation and research projects that contribute to making transport and mobility solutions more efficient to meet society´s challenges in efficiency, accessibility and resilience. The offer is part of the FFI Transport- and mobility services sub-programme within the Vehicle Strategic research and innovation (FFI) collaboration.",
+        "Oppningsdatum": null,
+        "Stangningsdatum": null,
+        "DagligAvlasning": 0,
+        "AvlasningstillfalleLista": [],
+        "UppskattatBeslutsdatum": null,
+        "TidigastProjektstart": null,
+        "SenastProjektstart": null,
+        "SenastProjektslut": null,
+        "DokumentLista": [],
+        "LankLista": [],
+        "KontaktLista": [
+            {
+                "Namn": "Björn Svensby Kurling",
+                "Telefon": "08-473 31 48",
+                "Epost": "bjorn.svensbykurling@vinnova.se",
+                "Roll": "Utlysningsansvarig",
+                "KontaktID": 14482287
+            },
+            {
+                "Namn": "Lena Dalsmyr",
+                "Telefon": "08-473 31 61",
+                "Epost": "lena.dalsmyr@vinnova.se",
+                "Roll": "Administratör",
+                "KontaktID": 14482288
+            }
+        ],
+        "Publik": 1,
+        "Webbsida": 1,
+        "AnnonseringslägeÅr": 2026,
+        "AnnonseringslägePeriod": "Januari",
+        "Extern": 0,
+        "WebTextLista": [
+            {
+                "TextID": 1,
+                "TextSv": "Innovations- och forskningsaktiviteter som bidrar till att effektivisera transport- och mobilitetslösningar för att möta samhällets utmaningar inom effektivitet, tillgänglighet och resiliens.",
+                "TextEn": "Innovation and research activities that contribute to streamlining transport and mobility solutions to meet society´s challenges in efficiency, accessibility and resilience."
+            },
+            {
+                "TextID": 2,
+                "TextSv": "Forskningsorganisationer, företag, offentliga och ideella organisationer. Samtliga projekt ska bestå av minst 2 parter.",
+                "TextEn": "Research organizations, companies, public and non-profit organizations. All projects must consist of at least 2 parties."
+            },
+            {
+                "TextID": 3,
+                "TextSv": "Vinnova beviljar bidrag om max 50 procent för delprogrammet. Projekt ska ha minst 25 procent näringslivsfinansiering. Maxbelopp för förstudier och mindre studier är 500 000 kronor. Totalt budget ca 45 miljoner",
+                "TextEn": "Vinnova grants funding of a maximum of 50 percent for the sub-program. Project must have at least 25 percent business funding. The maximum amount for preliminary studies and smaller studies is SEK 500,000. Total budget approx. 45 million"
+            }
+        ]
+    }
+]
