@@ -222,7 +222,7 @@ def normalize_vinnova(rec: Dict[str, Any]) -> Dict[str, Any]:
     # Apply URL heuristic
     apply_url = None
     for l in links_list:
-        if (l.get("label") or "").lower().find("ansök") >= 0:
+        if (l.get("label") or "").lower().find("Ansök här") >= 0:
             apply_url = l.get("url"); break
 
     # Links object required by API (strings, not null)
