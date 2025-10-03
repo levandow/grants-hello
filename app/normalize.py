@@ -66,6 +66,12 @@ def _strip_html(html: Optional[str]) -> Optional[str]:
     text = re.sub(r"\s+", " ", text)
     return text.strip() or None
 
+def _truncate(s: Optional[str], max_len: int) -> Optional[str]:
+    if s is None:
+        return None
+    s = str(s)
+    return s if len(s) <= max_len else s[: max_len - 1] + "…"
+
 _DATE_FMTS = (
     "%Y-%m-%dT%H:%M:%S",
     "%Y-%m-%dT%H:%M",
@@ -343,7 +349,8 @@ def normalize_eu(result: Dict[str, Any]) -> Dict[str, Any]:
     links_obj = {"landing": landing, "apply": apply_url}
 
     # Programme & identifiers
-    programme = _first(meta.get("callTitle"))
+    programme_full = _first(meta.get("callTitle"))
+    programme = _truncate(programme_full, 200)
     call_identifier = _first(meta.get("callIdentifier"))
     source_uid = _first(meta.get("identifier")) or result.get("reference") or _ensure_str(title) or "unknown"
 

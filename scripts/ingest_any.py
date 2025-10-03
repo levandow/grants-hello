@@ -54,19 +54,19 @@ def main() -> None:
     #    upsert(rec)
 
     # 2) Vinnova dummy connector; route explicitly for clarity
-    for rec in DummyVinnovaConnector():
-        upsert(rec, source="VINNOVA")
+    #for rec in DummyVinnovaConnector():
+    #    upsert(rec, source="VINNOVA")
 
     # 3) EU dummy connector; route explicitly
-    for rec in DummyEUConnector():
-        upsert(rec, source="EU")
+    #for rec in DummyEUConnector():
+    #    upsert(rec, source="EU")
 
     # --- Real fetchers (uncomment when needed) ---
-    # for rec in vinnova_rounds_fetch():
-    #     upsert(rec, source="VINNOVA")
-    #
-    # for rec in ftop_fetch():
-    #     upsert(rec, source="EU")
+    for rec in vinnova_rounds_fetch():
+        upsert(rec, source="VINNOVA")
+    
+    for rec in ftop_fetch():
+        upsert(rec, source="EU")
 
 if __name__ == "__main__":
     main()

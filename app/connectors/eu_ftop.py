@@ -5,7 +5,7 @@ from typing import Iterable, Dict, Any
 
 API = "https://api.tech.ec.europa.eu/search-api/prod/rest/search"
 API_KEY = "SEDIA"
-api_text = "***"
+api_text = "***&pageSize=80000&pageNumber=1"
 
 # Filters: open grant calls under Horizon Europe (43108390), status OPEN (31094502)
 # See examples in public threads and EC pages; adjust as needed.
