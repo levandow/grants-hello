@@ -116,7 +116,7 @@ def _compute_deadline_date(deadlines: List[Dict[str, Optional[str]]]) -> Optiona
 
 def _compute_status(opening_date: Optional[str], deadline_date: Optional[str]) -> str:
     if not opening_date and not deadline_date:
-        return "unknown"
+        return "Unknown"
     today = datetime.now(timezone.utc).date()
     od = None
     dd = None
@@ -131,12 +131,12 @@ def _compute_status(opening_date: Optional[str], deadline_date: Optional[str]) -
         except ValueError:
             pass
     if od and today < od:
-        return "upcoming"
+        return "Forthcoming"
     if dd and today <= dd:
-        return "open"
+        return "Open"
     if dd and today > dd:
-        return "closed"
-    return "unknown"
+        return "Closed"
+    return "Unknown"
 
 _DOC_KEYWORDS = (
     "call", "work programme", "work program", "guide", "guidance",
@@ -232,7 +232,11 @@ def normalize_vinnova(rec: Dict[str, Any]) -> Dict[str, Any]:
             apply_url = l.get("url"); break
 
     # Links object required by API (strings, not null)
-    landing = links_list[0]["url"] if links_list else (rec.get("Webbsida") or apply_url)
+    diarienummer = rec.get("Diarienummer")
+    if diarienummer:
+        landing = f"https://www.vinnova.se/ao/{diarienummer}"
+    else:
+        landing = links_list[0]["url"] if links_list else (rec.get("Webbsida") or apply_url)
     landing = _ensure_str(landing)
     apply_url = _ensure_str(apply_url or landing)
     links_obj = {"landing": landing, "apply": apply_url}
@@ -282,6 +286,85 @@ def normalize_vinnova(rec: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 # =========================
+# SE Generic normalizer (Formas, Forte, VR)
+# =========================
+
+def normalize_se_generic(rec: Dict[str, Any]) -> Dict[str, Any]:
+    source = rec.get("finansiarNamn") or "SE_GENERIC"
+    diarienummer = rec.get("diarienummer")
+    source_uid = diarienummer or "unknown"
+
+    title_sv = rec.get("titel")
+    title_en = rec.get("titelEng")
+    desc_sv = rec.get("beskrivning")
+    desc_en = rec.get("beskrivningEng")
+
+    title_dict = {"sv": title_sv, "en": title_en}
+    summary_dict = {"sv": desc_sv, "en": desc_en}
+    
+    # Prefer English for generic text
+    desc_text = desc_en or desc_sv
+
+    opening_date = rec.get("oppningsdatum")
+    closing_date = rec.get("stangningsdatum")
+    
+    deadlines = []
+    if closing_date:
+        deadlines.append({"type": "single", "date": closing_date})
+
+    # Status
+    raw_status = (rec.get("status") or "").lower()
+    status = "Unknown"
+    if "Kommande" in raw_status:
+        status = "Forthcoming"
+    elif "Pågående" in raw_status or "Pagaende" in raw_status:
+        status = "Open"
+    elif "Avslutad" in raw_status:
+        status = "Closed"
+    
+    if status == "Unknown":
+        status = _compute_status(opening_date, closing_date)
+
+    # Links
+    landing_url = ""
+    pub_places = rec.get("publiceringsplatser")
+    if isinstance(pub_places, list) and pub_places:
+        landing_url = pub_places[0].get("webbadress") or ""
+    
+    links_obj = {"landing": landing_url, "apply": landing_url}
+
+    language = ["sv"]
+    if title_en or desc_en:
+        language.append("en")
+
+    return {
+        "id": f"{source}:{source_uid}",
+        "source_uid": source_uid,
+        "source": source,
+        "source_id": source_uid,
+        "call_identifier": diarienummer,
+        "title": title_dict,
+        "summary": summary_dict,
+        "description_html": None,
+        "description_text": desc_text,
+        "language": language,
+        "programme": rec.get("program"),
+        "opening_date": opening_date,
+        "deadline_date": closing_date,
+        "deadlines": deadlines,
+        "status": status,
+        "country": "SE",
+        "apply_url": landing_url,
+        "documents": [],
+        "contacts": [],
+        "links": links_obj,
+        "budget_total": rec.get("budgetBelopp"),
+        "currency": rec.get("budgetValuta"),
+        "extra_json": rec,
+        "keywords": [],
+    }
+
+# =========================
 # EU normalizer
 # =========================
 
@@ -314,9 +397,19 @@ def normalize_eu(result: Dict[str, Any]) -> Dict[str, Any]:
                     pd = _parse_date_maybe(d)
                     if pd:
                         raw_deadlines.append(pd)
-                st = (a0.get("status") or {}).get("abbreviation")
-                if isinstance(st, str) and st:
-                    status = st.lower()
+                
+                # Map status ID to "Forthcoming", "Open", "Closed"
+                st_id = str((a0.get("status") or {}).get("id", ""))
+                if st_id == "31094501":
+                    status = "Forthcoming"
+                elif st_id == "31094502":
+                    status = "Open"
+                elif st_id == "31094503":
+                    status = "Closed"
+                else:
+                    st_abbr = (a0.get("status") or {}).get("abbreviation")
+                    if isinstance(st_abbr, str) and st_abbr:
+                        status = st_abbr.capitalize()
         except Exception:
             pass
 
@@ -329,8 +422,30 @@ def normalize_eu(result: Dict[str, Any]) -> Dict[str, Any]:
 
     deadlines = [{"type": "single", "date": d} for d in raw_deadlines]  # API requires 'type'
     deadline_date = _compute_deadline_date(deadlines) if deadlines else None
+    
+    if status == "unknown":
+        # Try top-level status list if deep check failed
+        top_status = meta.get("status") or []
+        if "31094501" in top_status:
+            status = "Forthcoming"
+        elif "31094502" in top_status:
+            status = "Open"
+        elif "31094503" in top_status:
+            status = "Closed"
+
     if status == "unknown":
         status = _compute_status(opening_date, deadline_date)
+
+    # Sanity check: If the calculated deadline is in the past, the call is Closed,
+    # regardless of what the API status says (indexes can be stale).
+    if deadline_date:
+        try:
+            dd_obj = datetime.strptime(deadline_date, "%Y-%m-%d").date()
+            today = datetime.now(timezone.utc).date()
+            if dd_obj < today:
+                status = "Closed"
+        except ValueError:
+            pass
 
     # Collect links: root urls + links from HTML blobs
     links_list: List[Dict[str, Optional[str]]] = []
@@ -410,8 +525,12 @@ def normalize(record: Dict[str, Any], source: Optional[str] = None) -> Dict[str,
         return normalize_vinnova(record)
     if src == "EU":
         return normalize_eu(record)
+    if src in ("FORMAS", "FORTE", "VR", "VETENSKAPSRÅDET"):
+        return normalize_se_generic(record)
 
     # Auto-detect based on shape
+    if "finansiarNamn" in record:
+        return normalize_se_generic(record)
     if any(k in record for k in ("Diarienummer", "Titel", "Beskrivning", "LankLista", "DokumentLista")):
         return normalize_vinnova(record)
     if isinstance(record.get("metadata"), dict):
