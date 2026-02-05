@@ -30,7 +30,7 @@ cd grants-hello
 Create your own `.env` file based on the example:
 
 Linux/Mac:
-```bash
+```bashv
 cp .env.example .env
 ```
 

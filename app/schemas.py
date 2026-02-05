@@ -20,6 +20,7 @@ class OpportunityIn(BaseModel):
     source_uid: str
     title: LocalizedText
     summary: LocalizedText
+    description: Optional[LocalizedText] = None
     programme: Optional[str] = None
     sponsor: Optional[str] = None
     topic_codes: List[str] = Field(default_factory=list)
@@ -33,16 +34,13 @@ class OpportunityIn(BaseModel):
 
     model_config = ConfigDict(extra="allow")  # accept and preserve unknown fields
 
-class Deadline(BaseModel):
-    type: str
-    date: str
-
 class OpportunityOut(BaseModel):
     id: str
     source: str
     source_uid: str
     title: LocalizedText
     summary: LocalizedText
+    description: Optional[LocalizedText] = None
     programme: Optional[str] = None
     sponsor: Optional[str] = None
     topic_codes: List[str] = Field(default_factory=list)
@@ -53,7 +51,6 @@ class OpportunityOut(BaseModel):
     opens_at: Optional[date] = None
     closes_at: Optional[date] = None
     notes: Optional[str] = None
-
     model_config = ConfigDict(extra="allow")
 
 class Facets(BaseModel):
@@ -61,3 +58,40 @@ class Facets(BaseModel):
     programmes: List[str] = Field(default_factory=list)
     statuses: List[str] = Field(default_factory=list)
     tags: List[str] = Field(default_factory=list)
+    sources: List[str] = Field(default_factory=list)
+
+class TechnologyBase(BaseModel):
+    name: str
+    description: Optional[str] = None
+    trl: Optional[int] = Field(default=None, ge=1, le=9, description="Technology Readiness Level (1-9)")
+
+class TechnologyCreate(TechnologyBase):
+    pass
+
+class Technology(TechnologyBase):
+    id: int
+    owner_id: int
+
+    class Config:
+        orm_mode = True
+
+class UserBase(BaseModel):
+    email: str
+
+class UserCreate(UserBase):
+    password: str
+
+class User(UserBase):
+    id: int
+    is_active: bool
+    technologies: List[Technology] = []
+
+    class Config:
+        orm_mode = True
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class TokenData(BaseModel):
+    email: Optional[str] = None

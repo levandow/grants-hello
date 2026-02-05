@@ -1,5 +1,5 @@
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import String, Date, JSON, Text
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy import String, Date, JSON, Text, Integer, Boolean, ForeignKey
 from typing import Dict, List, Optional, Any
 
 class Base(DeclarativeBase):
@@ -15,6 +15,7 @@ class Opportunity(Base):
     # JSON dicts for localized text
     title: Mapped[Dict[str, Optional[str]]] = mapped_column(JSON, nullable=False)
     summary: Mapped[Dict[str, Optional[str]]] = mapped_column(JSON, nullable=False)
+    description: Mapped[Dict[str, Optional[str]]] = mapped_column(JSON, nullable=True)
 
     programme: Mapped[Optional[str]] = mapped_column(String(200))
     sponsor: Mapped[Optional[str]] = mapped_column(String(200))
@@ -36,3 +37,24 @@ class Opportunity(Base):
 
     # Store any additional metadata that doesn't have dedicated columns
     extra: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    email: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
+    hashed_password: Mapped[str] = mapped_column(String, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    technologies = relationship("Technology", back_populates="owner")
+
+class Technology(Base):
+    __tablename__ = "technologies"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String, index=True, nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(String)
+    trl: Mapped[Optional[int]] = mapped_column(Integer)  # Technology Readiness Level (1-9)
+    owner_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"))
+
+    owner = relationship("User", back_populates="technologies")

@@ -130,11 +130,11 @@ def compute_status(opening_date: Optional[str], deadline_date: Optional[str]) ->
         dd = None
 
     if od and today < od:
-        return "upcoming"
+        return "Forthcoming"
     if dd and today <= dd:
-        return "open"
+        return "Open"
     if dd and today > dd:
-        return "closed"
+        return "Closed"
     return "unknown"
 
 # --- Documents vs links ---

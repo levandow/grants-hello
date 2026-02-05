@@ -1,20 +1,17 @@
 import os
-from datetime import date
+from datetime import date, timedelta
 from typing import Optional, List
 
-from fastapi import FastAPI, Depends, Query, HTTPException
+from fastapi import FastAPI, Depends, Query, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from fastapi.middleware.cors import CORSMiddleware
+from jose import JWTError, jwt
 
-from .db import engine, get_db
-from . import models, crud
-
-from .schemas import OpportunityIn, OpportunityOut, Facets
-from typing import Optional, List
-from datetime import date
-
-from .schemas import OpportunityIn, OpportunityOut
+from . import crud, models, security
+from .db import create_all, get_db
+from .schemas import OpportunityIn, OpportunityOut, Facets, User, UserCreate, Token, TokenData, Technology, TechnologyCreate
 try:
     # Pydantic v2
     from pydantic import BaseModel, Field, ConfigDict
@@ -28,7 +25,7 @@ except Exception:
 
 
 # --------------------------- app & startup ---------------------------
-
+create_all()
 
 
 app = FastAPI(title="Grants Hub API (Minimal)")
@@ -42,31 +39,80 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Create DB objects and indexes on startup (simple path; Alembic can be added later)
-if os.getenv("TESTING") != "1":
-    try:
-        with engine.begin() as conn:
-            conn.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto;"))
-        models.Base.metadata.create_all(bind=engine)
-    except Exception as e:
-        print(f"[startup] DB init skipped or failed: {e}")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
-    try:
-        with engine.begin() as conn:
-            # Scalar indexes to accelerate filters/sorting
-            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_opps_status ON opportunities (status);"))
-            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_opps_sponsor ON opportunities (sponsor);"))
-            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_opps_programme ON opportunities (programme);"))
-            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_opps_closes_at ON opportunities (closes_at);"))
-            # Functional indexes over JSON text for lightweight search
-            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_opps_title_en   ON opportunities ((title->>'en'));"))
-            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_opps_summary_en ON opportunities ((summary->>'en'));"))
-            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_opps_title_sv   ON opportunities ((title->>'sv'));"))
-            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_opps_summary_sv ON opportunities ((summary->>'sv'));"))
-        print("[startup] Index checks complete")
-    except Exception as e:
-        print(f"[startup] Index creation skipped: {e}")
+# --------------------------- auth & users ---------------------------
 
+def get_current_user(db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, security.SECRET_KEY, algorithms=[security.ALGORITHM])
+        email: str = payload.get("sub")
+        if email is None:
+            raise credentials_exception
+        token_data = TokenData(email=email)
+    except JWTError:
+        raise credentials_exception
+    user = crud.get_user_by_email(db, email=token_data.email)
+    if user is None:
+        raise credentials_exception
+    return user
+
+
+@app.post("/token", response_model=Token)
+def login_for_access_token(db: Session = Depends(get_db), form_data: OAuth2PasswordRequestForm = Depends()):
+    user = crud.authenticate_user(db, email=form_data.username, password=form_data.password)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    access_token_expires = timedelta(minutes=security.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = security.create_access_token(
+        data={"sub": user.email}, expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
+
+@app.get("/users/me/", response_model=User)
+def read_users_me(current_user: User = Depends(get_current_user)):
+    return current_user
+
+
+@app.post("/users/", response_model=User)
+def create_user(user: UserCreate, db: Session = Depends(get_db)):
+    db_user = crud.get_user_by_email(db, email=user.email)
+    if db_user:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    return crud.create_user(db=db, user=user)
+
+# --------------------------- technologies ---------------------------
+
+@app.post("/technologies/", response_model=Technology)
+def create_technology(
+    technology: TechnologyCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return crud.create_technology(db=db, technology=technology, user_id=current_user.id)
+
+
+@app.get("/technologies/", response_model=List[Technology])
+def read_technologies(
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    technologies = crud.get_technologies_by_user(
+        db, user_id=current_user.id, skip=skip, limit=limit
+    )
+    return technologies
 
 # --------------------------- health ---------------------------
 
@@ -98,6 +144,11 @@ class OpportunitiesResponse(BaseModel):
 def list_opps(
     q: Optional[str] = Query(None, description="Free text query"),
     query: Optional[str] = Query(None, description="Alias for q"),
+    id: Optional[str] = Query(None, description="Filter by ID"),
+    title: Optional[str] = Query(None, description="Filter by title text"),
+    summary: Optional[str] = Query(None, description="Filter by summary text"),
+    description: Optional[str] = Query(None, description="Filter by description text"),
+    source: Optional[str] = None,
     sponsor: Optional[str] = None,
     programme: Optional[str] = None,
     status: Optional[str] = None,
@@ -118,6 +169,11 @@ def list_opps(
         rows, total = crud.search_opportunities(
             db,
             q=term,
+            id=id,
+            title=title,
+            summary=summary,
+            description=description,
+            source=source,
             status=status,
             sponsor=sponsor,
             programme=programme,

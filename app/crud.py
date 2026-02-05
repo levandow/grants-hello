@@ -6,8 +6,42 @@ from typing import Optional, Tuple, List
 from sqlalchemy import select, func, and_, or_, cast, String, text
 from sqlalchemy.orm import Session
 
-from . import models
-from .schemas import OpportunityIn
+from . import models, security
+from .schemas import OpportunityIn, UserCreate, TechnologyCreate
+
+
+# --------------------------- users ---------------------------
+
+def get_user_by_email(db: Session, email: str):
+    return db.query(models.User).filter(models.User.email == email).first()
+
+def create_user(db: Session, user: UserCreate):
+    hashed_password = security.get_password_hash(user.password)
+    db_user = models.User(email=user.email, hashed_password=hashed_password)
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    return db_user
+
+def authenticate_user(db: Session, email: str, password: str):
+    user = get_user_by_email(db, email)
+    if not user:
+        return False
+    if not security.verify_password(password, user.hashed_password):
+        return False
+    return user
+
+# --------------------------- technologies ---------------------------
+
+def get_technologies_by_user(db: Session, user_id: int, skip: int = 0, limit: int = 100):
+    return db.query(models.Technology).filter(models.Technology.owner_id == user_id).offset(skip).limit(limit).all()
+
+def create_technology(db: Session, technology: TechnologyCreate, user_id: int):
+    db_technology = models.Technology(**technology.model_dump(), owner_id=user_id)
+    db.add(db_technology)
+    db.commit()
+    db.refresh(db_technology)
+    return db_technology
 
 
 # --------------------------- helpers ---------------------------
@@ -72,6 +106,11 @@ def search_opportunities(
     db: Session,
     *,
     q: Optional[str] = None,
+    id: Optional[str] = None,
+    title: Optional[str] = None,
+    summary: Optional[str] = None,
+    description: Optional[str] = None,
+    source: Optional[str] = None,
     status: Optional[str] = None,
     sponsor: Optional[str] = None,
     programme: Optional[str] = None,
@@ -98,6 +137,16 @@ def search_opportunities(
     conds = []
 
     # Filters
+    if id:
+        conds.append(_ilike(O.id, id))
+    if title:
+        conds.append(or_(_ilike(O.title.op("->>")("en"), title), _ilike(O.title.op("->>")("sv"), title)))
+    if summary:
+        conds.append(or_(_ilike(O.summary.op("->>")("en"), summary), _ilike(O.summary.op("->>")("sv"), summary)))
+    if description:
+        conds.append(or_(_ilike(O.description.op("->>")("en"), description), _ilike(O.description.op("->>")("sv"), description)))
+    if source:
+        conds.append(O.source == source)
     if status:
         conds.append(O.status == status)
     if sponsor:
@@ -105,7 +154,6 @@ def search_opportunities(
     if programme:
         conds.append(O.programme == programme)
     if tag:
-        from sqlalchemy import text
         # Portable: LOWER(CAST(tags AS TEXT)) LIKE '%tag%'
         conds.append(func.lower(cast(O.tags, String)).like(f"%{tag.lower()}%"))
 
@@ -119,13 +167,20 @@ def search_opportunities(
         conds.append(O.closes_at.isnot(None))
         conds.append(O.closes_at <= d_before)
 
-    # Free-text search across localized title/summary (Postgres JSON ->> operator)
+    # Free-text search across localized title/summary/description and extra data
     if q:
         t_en = O.title.op("->>")("en")
         t_sv = O.title.op("->>")("sv")
         s_en = O.summary.op("->>")("en")
         s_sv = O.summary.op("->>")("sv")
-        conds.append(or_(_ilike(t_en, q), _ilike(t_sv, q), _ilike(s_en, q), _ilike(s_sv, q)))
+        d_en = O.description.op("->>")("en")
+        d_sv = O.description.op("->>")("sv")
+        conds.append(or_(
+            _ilike(t_en, q), _ilike(t_sv, q), 
+            _ilike(s_en, q), _ilike(s_sv, q),
+            _ilike(d_en, q), _ilike(d_sv, q),
+            _ilike(cast(O.extra, String), q)
+        ))
 
     if conds:
         stmt = stmt.where(and_(*conds))
@@ -169,6 +224,14 @@ def get_facets(db: Session) -> dict:
         .order_by(O.sponsor)
     ]
 
+    sources = [
+        r[0]
+        for r in db.query(O.source)
+        .filter(O.source.isnot(None))
+        .distinct()
+        .order_by(O.source)
+    ]
+
     programmes = [
         r[0]
         for r in db.query(O.programme)
@@ -191,4 +254,5 @@ def get_facets(db: Session) -> dict:
         "programmes": programmes,
         "statuses": statuses,
         "tags": tags,
+        "sources": sources,
     }

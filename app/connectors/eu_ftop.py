@@ -95,8 +95,7 @@ def fetch(page_size: int = 100, max_pages: int | None = None) -> Iterator[Dict[s
             if not items:
                 logger.info(f"No items found on page {page}, stopping pagination")
                 break
-
-            logger.info(f"Retrieved {len(items)} items from page {page}")
+            
             for rec in items:
                 # Client-side check to ensure we only output Open or Forthcoming calls
                 metadata = rec.get("metadata", {})
@@ -137,6 +136,13 @@ def fetch(page_size: int = 100, max_pages: int | None = None) -> Iterator[Dict[s
 
                 yield rec
 
+            logger.info(f"Retrieved {len(items)} items from page {page}")
+
+            # If we got fewer items than the page size, it's the last page.
+            if len(items) < page_size:
+                logger.info(f"Page {page} has {len(items)} items (less than {page_size}), stopping pagination.")
+                break
+
         except requests.Timeout:
             logger.error(f"Request timeout on page {page} after 40 seconds")
             break
@@ -148,4 +154,5 @@ def fetch(page_size: int = 100, max_pages: int | None = None) -> Iterator[Dict[s
         except ValueError as e:
             logger.error(f"Failed to parse JSON response on page {page}: {e}")
             break
+        
         page += 1

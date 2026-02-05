@@ -40,6 +40,13 @@ def upsert(record: dict, *, source: Optional[str] = None, already_normalized: bo
     - Otherwise we normalize it here. You can pass source="VINNOVA" or "EU" to skip auto-detection.
     """
     n = record if already_normalized else normalize(record, source=source)
+    if n is None:
+        print(f"⚠️ Skipping record: normalization returned None", file=sys.stderr)
+        return
+
+    # Ensure the source field is present in the normalized record for facet indexing
+    if source and isinstance(n, dict) and not n.get("source"):
+        n["source"] = source
 
     r = requests.post(f"{API_URL}/opportunities", json=n, timeout=30)
     if r.status_code != 200:
@@ -68,20 +75,26 @@ def main() -> None:
     #    upsert(rec, source="EU")
 
     # --- Real fetchers (uncomment when needed) ---
-    for rec in vinnova_rounds_fetch():
-        upsert(rec, source="VINNOVA")
-    
-    for rec in ftop_fetch():
-        upsert(rec, source="EU")
+    fetchers = [
+        ("VINNOVA", vinnova_rounds_fetch),
+        ("EU", ftop_fetch),
+        ("FORMAS", FormasConnector().fetch),
+        ("FORTE", ForteConnector().fetch),
+        ("VR", VrConnector().fetch),
+    ]
 
-    for rec in FormasConnector().fetch():
-        upsert(rec, source="FORMAS")
-
-    for rec in ForteConnector().fetch():
-        upsert(rec, source="FORTE")
-
-    for rec in VrConnector().fetch():
-        upsert(rec, source="VR")
+    for source_name, fetch_func in fetchers:
+        print(f"--- Starting fetch for {source_name} ---")
+        try:
+            for rec in fetch_func():
+                upsert(rec, source=source_name)
+        except requests.exceptions.RequestException as e:
+            print(f"❌ Error fetching from {source_name}: {e}", file=sys.stderr)
+            # Continue to the next fetcher instead of crashing
+            continue
+        except Exception as e:
+            print(f"❌ Unexpected error in {source_name} connector: {e}", file=sys.stderr)
+            continue
 
 
 if __name__ == "__main__":

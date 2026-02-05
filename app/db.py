@@ -1,6 +1,7 @@
 import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from .models import Base
 
 DB_HOST = os.getenv("DB_HOST", "postgres")
 DB_PORT = os.getenv("DB_PORT", "5432")
@@ -19,3 +20,6 @@ def get_db():
         yield db
     finally:
         db.close()
+
+def create_all():
+    Base.metadata.create_all(bind=engine)
