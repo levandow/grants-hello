@@ -273,6 +273,8 @@ def normalize_vinnova(rec: Dict[str, Any]) -> Dict[str, Any]:
         "programme": None,
         "opening_date": opening_date,
         "deadline_date": deadline_date,
+        "opens_at": opening_date,
+        "closes_at": deadline_date,
         "deadlines": deadlines,                   # with 'type'
         "status": status,
         "country": "SE",
@@ -351,6 +353,8 @@ def normalize_se_generic(rec: Dict[str, Any]) -> Dict[str, Any]:
         "programme": rec.get("program"),
         "opening_date": opening_date,
         "deadline_date": closing_date,
+        "opens_at": opening_date,
+        "closes_at": closing_date,
         "deadlines": deadlines,
         "status": status,
         "country": "SE",
@@ -486,6 +490,8 @@ def normalize_eu(result: Dict[str, Any]) -> Dict[str, Any]:
         "programme": programme,
         "opening_date": opening_date,
         "deadline_date": deadline_date,
+        "opens_at": opening_date,
+        "closes_at": deadline_date,
         "deadlines": deadlines,           # with 'type'
         "status": status,
         "country": None,
