@@ -112,22 +112,20 @@ def compute_deadline_date(deadlines: List[Dict[str, Optional[str]]]) -> Optional
 
 def compute_status(opening_date: Optional[str], deadline_date: Optional[str]) -> str:
     if not opening_date and not deadline_date:
-        return "unknown"
+        return "Unknown"
     today = datetime.now(timezone.utc).date()
+    od = None
+    dd = None
     if opening_date:
         try:
             od = datetime.strptime(opening_date, "%Y-%m-%d").date()
         except ValueError:
-            od = None
-    else:
-        od = None
+            pass
     if deadline_date:
         try:
             dd = datetime.strptime(deadline_date, "%Y-%m-%d").date()
         except ValueError:
-            dd = None
-    else:
-        dd = None
+            pass
 
     if od and today < od:
         return "Forthcoming"
@@ -135,7 +133,7 @@ def compute_status(opening_date: Optional[str], deadline_date: Optional[str]) ->
         return "Open"
     if dd and today > dd:
         return "Closed"
-    return "unknown"
+    return "Unknown"
 
 # --- Documents vs links ---
 

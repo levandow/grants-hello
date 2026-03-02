@@ -1,174 +1,29 @@
 # app/normalize.py
 import json
-import re
-from html.parser import HTMLParser
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
+
+from .normalize_utils import (
+    extract_links as _extract_links,
+    strip_html as _strip_html,
+    parse_date_maybe as _parse_date_maybe,
+    compute_deadline_date as _compute_deadline_date,
+    compute_status as _compute_status,
+    split_documents_vs_links as _split_documents_vs_links,
+)
 
 # =========================
-# Shared helpers (stdlib)
+# Helpers unique to this module
 # =========================
 
 def _ensure_str(x: Optional[str]) -> str:
     return x if isinstance(x, str) else ""
-
-class _LinkExtractor(HTMLParser):
-    def __init__(self):
-        super().__init__()
-        self.links: List[Tuple[str, str]] = []
-        self._in_a = False
-        self._href = ""
-        self._text_chunks: List[str] = []
-
-    def handle_starttag(self, tag, attrs):
-        if tag.lower() == "a":
-            self._in_a = True
-            self._href = dict(attrs).get("href", "")
-
-    def handle_endtag(self, tag):
-        if tag.lower() == "a" and self._in_a:
-            text = " ".join(self._text_chunks).strip()
-            self.links.append((self._href, text))
-            self._in_a = False
-            self._href = ""
-            self._text_chunks = []
-
-    def handle_data(self, data):
-        if self._in_a:
-            self._text_chunks.append(data)
-
-def _extract_links(html: Optional[str]) -> List[Dict[str, Optional[str]]]:
-    if not html:
-        return []
-    p = _LinkExtractor()
-    try:
-        p.feed(html)
-    except Exception:
-        return []
-    seen = set()
-    out: List[Dict[str, Optional[str]]] = []
-    for href, text in p.links:
-        href = (href or "").strip()
-        text = (text or "").strip() or None
-        if not href:
-            continue
-        key = (href, text)
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append({"url": href, "label": text})
-    return out
-
-def _strip_html(html: Optional[str]) -> Optional[str]:
-    if not html:
-        return None
-    text = re.sub(r"<[^>]+>", " ", html)
-    text = re.sub(r"\s+", " ", text)
-    return text.strip() or None
 
 def _truncate(s: Optional[str], max_len: int) -> Optional[str]:
     if s is None:
         return None
     s = str(s)
     return s if len(s) <= max_len else s[: max_len - 1] + "…"
-
-_DATE_FMTS = (
-    "%Y-%m-%dT%H:%M:%S",
-    "%Y-%m-%dT%H:%M",
-    "%Y-%m-%d",
-    "%d %B %Y",      # 19 January 2025
-    "%d %b %Y",      # 19 Jan 2025
-)
-
-def _parse_date_maybe(s: Optional[str]) -> Optional[str]:
-    if not s:
-        return None
-    s = s.strip()
-    s = re.sub(r"([+-]\d{2})(\d{2})$", r"\1:\2", s)  # +0000 -> +00:00
-    if re.match(r"^\d{4}-\d{2}-\d{2}", s):
-        return s[:10]
-    for fmt in _DATE_FMTS:
-        try:
-            return datetime.strptime(s, fmt).date().isoformat()
-        except ValueError:
-            continue
-    m = re.search(r"\b(\d{4}-\d{2}-\d{2})\b", s)
-    return m.group(1) if m else None
-
-def _compute_deadline_date(deadlines: List[Dict[str, Optional[str]]]) -> Optional[str]:
-    """Pick the next upcoming date; if none upcoming, return the latest past (for display)."""
-    today = datetime.now(timezone.utc).date()
-    parsed = []
-    for d in deadlines:
-        ds = d.get("date")
-        if not ds:
-            continue
-        try:
-            parsed.append(datetime.strptime(ds, "%Y-%m-%d").date())
-        except ValueError:
-            pass
-    if not parsed:
-        return None
-    future = sorted([d for d in parsed if d >= today])
-    if future:
-        return future[0].isoformat()
-    return max(parsed).isoformat()
-
-def _compute_status(opening_date: Optional[str], deadline_date: Optional[str]) -> str:
-    if not opening_date and not deadline_date:
-        return "Unknown"
-    today = datetime.now(timezone.utc).date()
-    od = None
-    dd = None
-    if opening_date:
-        try:
-            od = datetime.strptime(opening_date, "%Y-%m-%d").date()
-        except ValueError:
-            pass
-    if deadline_date:
-        try:
-            dd = datetime.strptime(deadline_date, "%Y-%m-%d").date()
-        except ValueError:
-            pass
-    if od and today < od:
-        return "Forthcoming"
-    if dd and today <= dd:
-        return "Open"
-    if dd and today > dd:
-        return "Closed"
-    return "Unknown"
-
-_DOC_KEYWORDS = (
-    "call", "work programme", "work program", "guide", "guidance",
-    "template", "terms", "conditions", "instructions"
-)
-
-def _split_documents_vs_links(links: List[Dict[str, Optional[str]]]):
-    """PDFs or doc-like labels -> documents; others -> links."""
-    docs, other = [], []
-    for l in links:
-        url = (l.get("url") or "").strip()
-        label = (l.get("label") or "").strip()
-        lower = f"{label} {url}".lower()
-        is_pdf = url.lower().endswith(".pdf")
-        is_doc_like = is_pdf or any(k in lower for k in _DOC_KEYWORDS)
-        doc_item = {
-            "title": label or None, "description": None, "url": url, "lang": None,
-            "primary": None, "filename": None, "external_id": None
-        }
-        if is_doc_like:
-            docs.append(doc_item)
-        else:
-            other.append({"label": label or None, "url": url})
-    # de-dup by URL
-    def dedupe(lst, key):
-        seen = set(); out = []
-        for x in lst:
-            k = x.get(key)
-            if k and k not in seen:
-                seen.add(k); out.append(x)
-        return out
-    return dedupe(docs, "url"), dedupe(other, "url")
 
 def _first(x):
     return x[0] if isinstance(x, list) and x else None

@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:api.tech.ec.europa.eu)",
+      "WebFetch(domain:ec.europa.eu)",
+      "WebFetch(domain:api.formas.se)",
+      "WebFetch(domain:api.forte.se)",
+      "WebFetch(domain:api.vr.se)",
+      "WebFetch(domain:ted.europa.eu)",
+      "WebFetch(domain:portal.api.vinnova.se)",
+      "WebFetch(domain:www.vinnova.se)",
+      "WebFetch(domain:www.vr.se)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:data.vinnova.se)"
+    ]
+  }
+}

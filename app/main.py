@@ -30,11 +30,17 @@ create_all()
 
 app = FastAPI(title="Grants Hub API (Minimal)")
 
-# --- CORS (dev-friendly; tighten in production) ---
+# --- CORS ---
+# Set CORS_ORIGINS in env as a comma-separated list, e.g.:
+#   CORS_ORIGINS=https://app.example.com,https://admin.example.com
+# Defaults to localhost dev ports. Wildcard "*" disables credentials.
+_cors_origins_raw = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173")
+_cors_origins = [o.strip() for o in _cors_origins_raw.split(",") if o.strip()]
+_allow_credentials = "*" not in _cors_origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],          # replace with exact domain(s) when deploying
-    allow_credentials=True,
+    allow_origins=_cors_origins,
+    allow_credentials=_allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
